@@ -51,7 +51,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -93,6 +93,7 @@ function handlePost_(body) {
     case 'review': return review_(body);
     case 'results': return results_(body);
     case 'grade': return grade_(body);
+    case 'exportExam': return exportExam_(body);
     default: return fail_('bad_request', 'Acción no reconocida.');
   }
 }
@@ -552,6 +553,15 @@ function listExams_(params) {
     };
   });
   return { ok: true, exams: exams };
+}
+
+// Preguntas completas de un examen, con sus soluciones, para que el panel las descargue como GIFT. Exige el token.
+function exportExam_(p) {
+  var auth = checkToken_(p.token);
+  if (auth) return auth;
+  var exam = findExam_(p.examId);
+  if (!exam) return fail_('not_found', 'Este examen no existe.');
+  return { ok: true, titulo: exam.titulo, instrucciones: exam.instrucciones, preguntas: JSON.parse(exam.preguntas_json) };
 }
 
 // Datos para la pantalla de corrección del panel: una fila por envío, con las respuestas abiertas y sus puntos.

@@ -228,3 +228,40 @@ export function parseGift(input) {
   if (errors.length) throw new GiftError(errors);
   return questions;
 }
+
+/* ------------------------------ exportación ------------------------------ */
+
+// Escapa un texto para GIFT: la barra invertida, los caracteres especiales y los saltos de línea (como \n,
+// para que nunca quede una línea en blanco dentro de una pregunta).
+function escapeGift(text) {
+  return String(text ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/[:=~#{}]/g, (c) => `\\${c}`)
+    .replace(/\r?\n/g, "\\n");
+}
+
+/** Lo que vale una pregunta como marca [valor=N] (coma decimal), o "" si vale 1. */
+function valueMark(valor) {
+  const v = Number(valor);
+  return Number.isFinite(v) && v > 0 && v !== 1 ? `[valor=${String(v).replace(".", ",")}] ` : "";
+}
+
+/**
+ * Convierte preguntas (las de parseGift o las guardadas en la hoja) en texto GIFT que parseGift vuelve a leer
+ * igual: título, valor, enunciado, opciones de test, respuestas cortas aceptadas y abiertas.
+ */
+export function toGift(questions, comment = "") {
+  const blocks = questions.map((q) => {
+    const title = q.title ? `::${escapeGift(q.title)}::` : "";
+    const text = escapeGift(q.text);
+    // Un enunciado sin título que empezara por // se leería como comentario: la marca de valor lo evita.
+    const mark = valueMark(q.valor) || (!title && text.startsWith("//") ? "[valor=1] " : "");
+    const head = `${title}${mark}${text}`;
+    if (q.tipo === "abierta") return `${head}{}`;
+    if (q.tipo === "corta") return `${head}{${(q.respuestas ?? []).map((r) => `=${escapeGift(r)}`).join(" ")}}`;
+    const options = q.options.map((o) => `${o.id === q.correct ? "=" : "~"}${escapeGift(o.text)}`);
+    return `${head}{\n${options.join("\n")}\n}`;
+  });
+  const header = comment ? `${String(comment).split(/\r?\n/).map((l) => (l.trim() ? `// ${l}` : "//")).join("\n")}\n\n` : "";
+  return `${header}${blocks.join("\n\n")}\n`;
+}

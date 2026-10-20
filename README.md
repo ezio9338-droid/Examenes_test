@@ -154,6 +154,8 @@ La hoja de Google guarda los puntos, y la **nota final** de cada alumno (columna
 - Solo vale para envíos hechos con esta versión: los exámenes entregados antes no guardaron el identificador en el dispositivo.
 - Requiere `Code.gs` actualizado; si no lo está, el botón no aparece.
 
+**Exportar las preguntas (GIFT).** El botón **Exportar preguntas (GIFT)** de cada examen descarga sus preguntas, con las soluciones, en un archivo `.gift` que el panel vuelve a leer igual: sirve para reutilizar un examen, retocarlo y publicarlo de nuevo, o recuperar el GIFT si lo has perdido. Incluye el valor de cada pregunta, las respuestas aceptadas de las de respuesta corta y las abiertas; las instrucciones para el alumno van al principio como comentario (para reutilizarlas, cópialas al campo de instrucciones). Las imágenes no van dentro: el GIFT solo las cita por su nombre, así que al publicarlo de nuevo tendrás que volver a subirlas. El archivo lleva las soluciones: guárdalo fuera del repositorio. Requiere `Code.gs` actualizado.
+
 **Exportar las notas.** El botón **Exportar notas (CSV)** de cada examen descarga una tabla limpia (apellidos, nombre, grupo, nota final, aciertos, errores, en blanco, salidas, segundos fuera, desconexiones, segundos sin conexión, intentos de pegar), ordenada por apellidos y lista para abrir en Excel en español (separador `;`, decimales con coma).
 
 **Qué ve el alumno.** Solo la parte del test: «Parte tipo test: X sobre Y puntos» y el aviso de que las abiertas las corrige el profesor. Si quitas «Mostrar la nota al alumno», no ve nada.

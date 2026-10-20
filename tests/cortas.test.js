@@ -173,3 +173,16 @@ test("instrucciones del examen: se guardan limpias y el alumno las recibe con el
   assert.equal(env.get({ action: "exam", id: none.id }).exam.instrucciones, "");
   assert.ok(env.get({ action: "version" }).funciones.includes("instrucciones"));
 });
+
+test("exportExam: con el token devuelve las preguntas con soluciones, que se convierten en el mismo GIFT", async () => {
+  const { toGift } = await import("../js/gift.js");
+  const env = makeEnv();
+  const preguntas = parseGift(GIFT);
+  const r = env.post({ action: "createExam", token: "secreto", titulo: "Química", instrucciones: "Lee bien", preguntas });
+  assert.equal(env.post({ action: "exportExam", token: "mal", examId: r.id }).error, "unauthorized");
+  assert.equal(env.post({ action: "exportExam", token: "secreto", examId: "nada" }).error, "not_found");
+  const res = plain(env.post({ action: "exportExam", token: "secreto", examId: r.id }));
+  assert.deepEqual([res.titulo, res.instrucciones], ["Química", "Lee bien"]);
+  assert.deepEqual(parseGift(toGift(res.preguntas)), preguntas);
+  assert.ok(env.get({ action: "version" }).funciones.includes("exportar"));
+});
