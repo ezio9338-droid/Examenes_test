@@ -1,4 +1,4 @@
-// Pantalla de corrección de preguntas abiertas y exportación de las notas (panel del profesor).
+// Pantalla de corrección de preguntas abiertas y de respuesta corta, y exportación de las notas (panel del profesor).
 import { apiPost, NetworkError } from "./api.js";
 import { h } from "./dom.js";
 import { richNodes } from "./rich.js";
@@ -69,8 +69,10 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
     return;
   }
 
-  const opens = res.exam.preguntas.filter((q) => q.tipo === "abierta");
+  // Primero las abiertas (hay que corregirlas) y después las de respuesta corta (ya corregidas solas; se pueden cambiar).
+  const opens = [...res.exam.preguntas.filter((q) => q.tipo === "abierta"), ...res.exam.preguntas.filter((q) => q.tipo === "corta")];
   const rows = res.rows;
+  for (const r of rows) r.cortas = r.cortas ?? {};
   let current = opens[0];
   let onlyPending = false;
   const body = h("div");
@@ -78,22 +80,31 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   const progress = h("div", { class: "progress-wrap" });
 
   const done = (q) => rows.filter((r) => r.abiertas[q.id]?.puntos !== null && r.abiertas[q.id]?.puntos !== undefined).length;
+  const isShort = (q) => q.tipo === "corta";
+  // Respuesta corta: la corrección a mano si la hay; si no, la automática.
+  const shortOk = (a) => Boolean(a?.texto?.trim()) && (a.manual ?? a.auto);
+  const shortRight = (q) => rows.filter((r) => shortOk(r.cortas[q.id])).length;
 
   function renderTabs() {
     tabs.replaceChildren(
       ...opens.map((q) => {
-        const d = done(q);
+        const d = isShort(q) ? rows.length : done(q);
         return h(
           "button",
           { type: "button", role: "tab", class: `q-tab${q === current ? " active" : ""}${d === rows.length && rows.length ? " complete" : ""}`, onclick: () => { current = q; renderAll(); } },
-          h("strong", {}, `Pregunta ${q.n}`),
-          h("small", {}, `${d}/${rows.length} · ${fmt(q.valor)} pt`)
+          h("strong", {}, `Pregunta ${q.n}${isShort(q) ? " · corta" : ""}`),
+          h("small", {}, isShort(q) ? `${shortRight(q)}/${rows.length} correctas · ${fmt(q.valor)} pt` : `${d}/${rows.length} · ${fmt(q.valor)} pt`)
         );
       })
     );
   }
 
   function renderProgress() {
+    if (isShort(current)) {
+      const manual = rows.filter((r) => r.cortas[current.id]?.manual !== null && r.cortas[current.id]?.manual !== undefined).length;
+      progress.replaceChildren(h("p", { class: "muted small" }, `${shortRight(current)} de ${rows.length} correctas${manual ? ` · ${manual} corregida${manual === 1 ? "" : "s"} a mano` : ""}`));
+      return;
+    }
     const d = done(current);
     const pct = rows.length ? Math.round((d / rows.length) * 100) : 0;
     progress.replaceChildren(
@@ -103,6 +114,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   }
 
   function renderBody() {
+    if (isShort(current)) return renderShortBody();
     const inputs = [];
     const visible = rows.filter((r) => !onlyPending || r.abiertas[current.id].puntos === null);
     const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: onlyPending, onchange: (e) => { onlyPending = e.target.checked; renderBody(); } }), "Mostrar solo las sin corregir");
@@ -111,6 +123,76 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
       visible.length ? h("span") : h("div", { class: "notice ok" }, h("p", {}, rows.length ? "No queda ninguna sin corregir en esta pregunta. 🎉" : "Todavía no hay envíos.")),
       ...visible.map((r, idx) => answerCard(r, idx, inputs))
     );
+  }
+
+  // Respuesta corta: ya corregida sola; el profesor puede marcarla como correcta o incorrecta.
+  function renderShortBody() {
+    const visible = rows.filter((r) => !onlyPending || (r.cortas[current.id]?.texto?.trim() && !shortOk(r.cortas[current.id])));
+    const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: onlyPending, onchange: (e) => { onlyPending = e.target.checked; renderBody(); } }), "Mostrar solo las incorrectas");
+    const accepted = current.respuestas ?? [];
+    body.replaceChildren(
+      h(
+        "div",
+        { class: "card q-head" },
+        h("div", { class: "q-text" }, h("strong", {}, `${current.n}. `), ...richNodes(current.text, res.exam.imagenes ?? {})),
+        h("p", { class: "small" }, `${accepted.length === 1 ? "Respuesta aceptada" : "Respuestas aceptadas"}: `, h("strong", {}, accepted.join(" · "))),
+        h("p", { class: "muted small" }, `Vale ${fmt(current.valor)} ${current.valor === 1 ? "punto" : "puntos"}. Ya están corregidas solas; si una respuesta está bien (o mal) aunque la corrección automática diga lo contrario, cámbiala con los botones y la nota del alumno se recalcula.`),
+        progress,
+        only
+      ),
+      visible.length ? h("span") : h("div", { class: "notice ok" }, h("p", {}, rows.length ? "No hay respuestas incorrectas en esta pregunta. 🎉" : "Todavía no hay envíos.")),
+      ...visible.map((r) => shortCard(r))
+    );
+  }
+
+  function shortCard(r) {
+    const a = (r.cortas[current.id] = r.cortas[current.id] ?? { texto: "", auto: false, manual: null });
+    const card = h("div");
+    const status = h("span", { class: "save-state small" });
+
+    async function save(value) {
+      // Si coincide con la automática no se guarda corrección a mano: vuelve a la automática.
+      const correcta = value === a.auto ? null : value;
+      status.textContent = "Guardando…";
+      status.className = "save-state small";
+      try {
+        const out = await apiPost({ action: "grade", token, examId: ex.id, envioId: r.envio_id, qid: current.id, correcta });
+        if (out.error === "unauthorized") return onUnauthorized();
+        if (!out.ok) {
+          status.textContent = out.error === "invalid_grade" && /abierta/.test(out.message ?? "") ? "El script de Google no está actualizado: actualiza Code.gs (Nueva versión)." : out.message || "No se ha podido guardar.";
+          status.className = "save-state small bad";
+          return;
+        }
+        a.manual = out.correcta;
+        r.aciertos = out.aciertos;
+        r.errores = out.errores;
+        if (out.nota !== "") r.nota = out.nota;
+        paint(`Guardado ✓ · nota del alumno: ${fmt(r.nota)}`);
+        renderTabs();
+        renderProgress();
+      } catch {
+        status.textContent = "Sin conexión: no se ha guardado.";
+        status.className = "save-state small bad";
+      }
+    }
+
+    function paint(message = "") {
+      const blank = !a.texto.trim();
+      const ok = shortOk(a);
+      const state = blank ? "blank" : ok ? "ok" : "bad";
+      const label = blank ? "En blanco" : `${ok ? "Correcta" : "Incorrecta"} · ${a.manual === null || a.manual === undefined ? "automática" : "corregida a mano"}`;
+      card.className = `answer-card${blank ? "" : ok ? " graded" : " wrong"}`;
+      status.textContent = message;
+      status.className = "save-state small ok";
+      const pick = (value, text) => h("button", { type: "button", class: `btn small${ok === value ? "" : " secondary"}`, "aria-pressed": String(ok === value), onclick: () => (ok === value ? null : save(value)) }, text);
+      card.replaceChildren(
+        h("div", { class: "answer-head" }, h("strong", {}, `${r.apellidos}, ${r.nombre}`), h("span", { class: "badge off-soft" }, r.grupo), h("span", { class: `review-status ${state}` }, label)),
+        blank ? h("div", { class: "answer-text empty" }, "(En blanco)") : h("div", { class: "answer-text" }, a.texto),
+        blank ? null : h("div", { class: "grade-row" }, pick(true, "✓ Correcta"), pick(false, "✗ Incorrecta"), status)
+      );
+    }
+    paint();
+    return card;
   }
 
   function answerCard(r, idx, inputs) {
@@ -193,8 +275,8 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   });
 
   app.replaceChildren(
-    h("div", { class: "top-bar" }, h("div", {}, h("p", { class: "muted small", style: "margin:0" }, "Corregir preguntas abiertas"), h("h1", {}, ex.titulo)), h("div", { class: "actions" }, exportBtn, h("button", { class: "btn secondary small", type: "button", onclick: onBack }, "← Volver al panel"))),
-    opens.length ? tabs : h("div", { class: "notice info" }, h("p", {}, "Este examen no tiene preguntas abiertas.")),
+    h("div", { class: "top-bar" }, h("div", {}, h("p", { class: "muted small", style: "margin:0" }, "Corregir respuestas"), h("h1", {}, ex.titulo)), h("div", { class: "actions" }, exportBtn, h("button", { class: "btn secondary small", type: "button", onclick: onBack }, "← Volver al panel"))),
+    opens.length ? tabs : h("div", { class: "notice info" }, h("p", {}, "Este examen no tiene preguntas abiertas ni de respuesta corta.")),
     body
   );
   if (opens.length) renderAll();

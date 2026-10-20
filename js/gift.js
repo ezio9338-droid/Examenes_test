@@ -1,5 +1,7 @@
-// Parser de un subconjunto de GIFT: opción múltiple con una única respuesta correcta.
-// Función pura: no toca el DOM ni la red. Se usa en el panel del profesor.
+// Parser de un subconjunto de GIFT: opción múltiple con una única respuesta correcta, respuesta corta
+// ({=NaCl =ClNa}: solo respuestas aceptadas, sin ~) y abierta ({}). Función pura: no toca el DOM ni la red. Se usa en el panel del profesor.
+
+import { MAX_SHORT_ANSWERS, MAX_SHORT_CHARS } from "./short.js";
 
 const ESCAPABLE = new Set([":", "=", "~", "#", "{", "}", "\\"]);
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
@@ -148,6 +150,18 @@ function parseBlock(block, n) {
   }
 
   const parts = splitOptions(rest.slice(open + 1, close));
+  // Solo respuestas con = (ninguna ~): respuesta corta, se corrige sola comparando con las aceptadas.
+  if (parts.length && parts.every((p) => p.correct)) {
+    const respuestas = [...new Set(parts.map((p) => parseOption(p).text))];
+    if (respuestas.some((r) => !r)) throw new Error(`Pregunta ${n}: hay una respuesta aceptada vacía.`);
+    if (respuestas.length > MAX_SHORT_ANSWERS) {
+      throw new Error(`Pregunta ${n}: demasiadas respuestas aceptadas (máximo ${MAX_SHORT_ANSWERS}).`);
+    }
+    if (respuestas.some((r) => r.length > MAX_SHORT_CHARS)) {
+      throw new Error(`Pregunta ${n}: una respuesta aceptada supera los ${MAX_SHORT_CHARS} caracteres.`);
+    }
+    return { id: `q${n}`, title, text, options: [], correct: null, respuestas, valor, tipo: "corta" };
+  }
   if (parts.length < 2) {
     throw new Error(`Pregunta ${n}: necesita al menos 2 opciones (tiene ${parts.length}).`);
   }
@@ -175,7 +189,7 @@ function parseBlock(block, n) {
 /**
  * Convierte texto GIFT en preguntas.
  * @param {string} input
- * @returns {{id:string,title:string,text:string,options:{id:string,text:string}[],correct:string|null,valor:number,tipo:"test"|"abierta"}[]}
+ * @returns {{id:string,title:string,text:string,options:{id:string,text:string}[],correct:string|null,respuestas?:string[],valor:number,tipo:"test"|"corta"|"abierta"}[]}
  * @throws {GiftError} con `.errors` (una entrada por pregunta defectuosa, con su número).
  */
 export function parseGift(input) {

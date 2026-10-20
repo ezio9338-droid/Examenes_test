@@ -93,7 +93,7 @@ Escribe las preguntas en un archivo de texto con este formato (la respuesta corr
 
 **Guarda estos archivos fuera del repositorio** (llevan las soluciones). El `.gitignore` bloquea `*.gift` y `*.txt`, pero lo más seguro es no ponerlos nunca en la carpeta del proyecto.
 
-### Puntos por pregunta y preguntas abiertas
+### Puntos por pregunta, preguntas abiertas y de respuesta corta
 
 **Cuántos puntos vale cada pregunta.** Se escribe en el propio GIFT con la marca `[valor=N]` **al principio del enunciado** (justo después del título `::…::`, si lo hay). Si no la pones, la pregunta vale **1**. Acepta enteros y decimales (`2`, `0,5`, `0.5`, `1/2`), mayores que 0 y como mucho 100. También vale `[puntos=N]`.
 
@@ -115,7 +115,30 @@ Escribe las preguntas en un archivo de texto con este formato (la respuesta corr
 
 **La penalización escala con el valor**: un error en una pregunta de 2 puntos resta el doble que en una de 1 (con la penalización 1/3, resta 2/3 de punto).
 
-**Corregir las abiertas (en el panel, no en la hoja).** En «Mis exámenes», el examen con preguntas abiertas tiene el botón **Corregir abiertas**. Se corrige **pregunta por pregunta**: arriba eliges la pregunta (con cuántas llevas corregidas), y debajo ves la respuesta de cada alumno en una caja grande y legible, con su grupo y, si los hubo, los intentos de pegar. Escribes los puntos (de 0 al máximo; acepta coma decimal) o pulsas **0**, **½** o **Máximo**, y se guardan solos al pulsar Intro o salir del campo; Intro salta al siguiente alumno. «Mostrar solo las sin corregir» te deja ver lo que falta.
+**Preguntas de respuesta corta (se corrigen solas).** Para preguntas cuya respuesta es una palabra, un número o una fórmula, escribe dentro de las llaves **solo respuestas con `=`** (ninguna `~`). El alumno ve un cuadro de una línea y el servidor compara lo que escribe con las respuestas aceptadas; puedes poner varias si hay más de una forma válida:
+
+```
+::C01::[valor=0,5] Escribe la fórmula del cloruro de sodio.{=NaCl}
+
+::C02::¿Cómo se llama el compuesto NaCl?{=cloruro de sodio =cloruro sódico}
+
+::C03::¿Cuántos gramos hay en 0,5 kg?{=500}
+```
+
+Cómo se compara (para que no haga falta prever cada variante):
+
+- **La ortografía cuenta, tildes incluidas**: «cloruro sodico» no vale por `cloruro sódico`. Al alumno se le avisa en la pantalla inicial y debajo de cada cuadro. Lo que no cuenta son los espacios de más ni un punto final: «Cloruro sódico.» vale. Si la respuesta no tiene espacios, tampoco cuentan los del alumno: «Na Cl» vale por `NaCl`.
+- **Mayúsculas:** si escribes la respuesta en minúsculas, o solo con la inicial en mayúscula (`Oxígeno`, `Ley de Ohm`), dan igual. Si lleva mayúsculas en medio o es un símbolo de una o dos letras (`NaCl`, `CO2`, `H2O`, `Fe`, `pH`), **tienen que coincidir**: «nacl» es incorrecto y «Co» (cobalto) no vale por `CO`. La vista previa del panel te dice, en cada pregunta, si las mayúsculas cuentan.
+- Los subíndices cuentan como números normales (`H₂O` = `H2O`) y en los números da igual la coma o el punto (`0,5` = `0.5`).
+- Para escribir `=`, `~`, `#`, `{` o `}` dentro de una respuesta aceptada, ponle delante una barra invertida (`v\=d/t`).
+
+Cuentan como las de test (acierto, error o en blanco) y suman sus puntos, pero **un error no resta**: escribiendo al azar no se acierta.
+
+**Cambiar la corrección a mano.** Llegan ya corregidas, pero puedes cambiarlas: en «Mis exámenes», el botón **Revisar respuestas cortas** (o **Corregir abiertas**, si el examen también tiene abiertas) muestra cada pregunta de respuesta corta con lo que ha escrito cada alumno, marcado como «Correcta · automática» o «Incorrecta · automática». Si un alumno escribió algo válido que no habías previsto (por ejemplo «ClNa»), pulsa **✓ Correcta**, y si quieres dar por mala una que la máquina aceptó, **✗ Incorrecta**: la nota del alumno, sus aciertos y errores se recalculan al momento en la hoja y en la revisión. Volver a pulsar lo que diría la corrección automática la deja como automática. «Mostrar solo las incorrectas» te enseña solo las que conviene mirar. Las correcciones a mano se guardan en la columna oculta `cortas_manual` de la hoja.
+
+En la revisión, el alumno ve lo que escribió y, si falló, la respuesta correcta. En ese cuadro tampoco se puede pegar texto. Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
+
+**Corregir las abiertas (en el panel, no en la hoja).** En «Mis exámenes», el examen con preguntas abiertas tiene el botón **Corregir abiertas** (en la misma pantalla están también las de respuesta corta, detrás de las abiertas). Se corrige **pregunta por pregunta**: arriba eliges la pregunta (con cuántas llevas corregidas), y debajo ves la respuesta de cada alumno en una caja grande y legible, con su grupo y, si los hubo, los intentos de pegar. Escribes los puntos (de 0 al máximo; acepta coma decimal) o pulsas **0**, **½** o **Máximo**, y se guardan solos al pulsar Intro o salir del campo; Intro salta al siguiente alumno. «Mostrar solo las sin corregir» te deja ver lo que falta.
 
 La hoja de Google guarda los puntos, y la **nota final** de cada alumno (columna `nota`) se actualiza sola: test + puntos de las abiertas, sobre 10. Mientras no corrijas, `nota` es solo la del test y la columna `pendientes` sale en ámbar.
 
@@ -156,9 +179,12 @@ REGLAS DEL FORMATO (obligatorias):
 6. PUNTOS: la marca [valor=N] va al PRINCIPIO del enunciado, justo después del título ::Pxx::. N es un número mayor que 0 (usa punto o coma decimal: 1, 2, 0.5). Si una pregunta vale 1 punto puedes omitirla.
 7. PREGUNTAS ABIERTAS (respuesta escrita por el alumno): llaves VACÍAS, sin opciones. Ejemplo:
    ::A01::[valor=3] Explica con tus palabras qué es el método científico.{}
+   PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y con su ortografía correcta (tildes incluidas), y las fórmulas con sus mayúsculas exactas. Ejemplos:
+   ::C01::Escribe la fórmula del cloruro de sodio.{=NaCl}
+   ::C02::¿Cómo se llama el compuesto NaCl?{=cloruro de sodio =cloruro sódico}
 8. Para escribir los caracteres : = ~ # { } dentro de un texto, ponles delante una barra invertida (\= \{ \}...). Evita fórmulas en LaTeX; escribe las fórmulas con texto simple (v = d/t, 3x^2).
 9. Imágenes (solo en el enunciado, no en opciones): ![descripción](nombre.png) con un nombre de archivo simple, sin carpetas ni http. Solo si yo te indico qué imágenes hay.
-10. Títulos ::P01::, ::P02::... correlativos (A01, A02... para abiertas). Los comentarios empiezan por //.
+10. Títulos ::P01::, ::P02::... correlativos (A01, A02... para abiertas; C01, C02... para respuesta corta). Los comentarios empiezan por //.
 
 PUNTUACIÓN QUE QUIERO:
 [ESCRÍBELO AQUÍ, por ejemplo:]
@@ -175,6 +201,7 @@ PUNTUACIÓN QUE QUIERO:
 | Test + abiertas | «18 de test de 0,5 puntos y 2 abiertas de 3 puntos cada una.» |
 | Por dificultad | «Fáciles (1 punto), medias (1,5) y difíciles (2); pon 5 de cada.» |
 | Una abierta concreta | «La última pregunta es abierta y vale 4 puntos.» |
+| Respuesta corta | «Añade 5 preguntas de respuesta corta de formulación (fórmula ↔ nombre), de 0,5 puntos.» |
 
 No hace falta que sumen 10: la nota se proporciona sobre 10 con el total. Revisa siempre la **vista previa del panel** (respuesta correcta marcada ✓, valor de cada pregunta y reparto total) antes de publicar: la IA puede equivocarse, y la corrección del test depende de que la opción marcada con `=` sea la buena.
 
@@ -274,7 +301,7 @@ Desde **Mis exámenes → Cerrar examen**. Los alumnos que abran el enlace verá
 
 ### Cómo se calcula la nota
 
-Cada acierto suma los puntos de la pregunta (**1** si no pone `[valor=N]`), cada pregunta en blanco **0** y cada error **resta una fracción de esos puntos**. Las preguntas abiertas las puntúas tú en la hoja (ver arriba); el resto de esta sección explica el test con preguntas de 1 punto.
+Cada acierto suma los puntos de la pregunta (**1** si no pone `[valor=N]`), cada pregunta en blanco **0** y cada error **resta una fracción de esos puntos**. Las preguntas abiertas las puntúas tú en la hoja (ver arriba) y las de respuesta corta suman sus puntos si aciertan y nunca restan; el resto de esta sección explica el test con preguntas de 1 punto.
 
 Al publicar el examen eliges la **penalización por cada error**, siempre como fracción:
 
@@ -348,9 +375,10 @@ css/styles.css             Estilos (claro y oscuro)
 js/config.js               URL del Apps Script
 js/api.js                  Llamadas al Apps Script (POST como text/plain, sin preflight CORS)
 js/student.js, admin.js    Lógica de cada página
-js/correction.js           Pantalla de corrección de abiertas y exportación CSV
-js/gift.js                 Parser GIFT: [valor=N] y preguntas abiertas {} (función pura)
+js/correction.js           Pantalla de corrección de abiertas y de respuesta corta, y exportación CSV
+js/gift.js                 Parser GIFT: [valor=N], respuesta corta {=a =b} y abiertas {} (función pura)
 js/grading.js              Corrección ponderada y penalización fraccionaria (pura; replicada en Code.gs)
+js/short.js                Comparación de respuestas cortas (pura; replicada en Code.gs)
 js/images.js               Citas de imágenes ![alt](archivo.png) y límites (puro; réplica parcial en Code.gs)
 js/image-encode.js         Reduce y codifica las imágenes en el navegador (canvas)
 js/rich.js                 Pinta un enunciado con imágenes sin insertar HTML
@@ -370,4 +398,4 @@ node --test
 
 Guía de validación con Google real: [docs/PRUEBA_FINAL.md](docs/PRUEBA_FINAL.md).
 
-`tests/codegs.test.js` carga `Code.gs` con una hoja de cálculo simulada (`tests/fake-gas.js`, que imita también conversiones automáticas de Sheets como `1/3` → fecha) y comprueba que su corrección coincide con `js/grading.js` con miles de casos aleatorios. **Si cambias la lógica de corrección o el formato de las citas de imágenes en uno de los dos archivos, cámbiala también en el otro.**
+`tests/codegs.test.js` carga `Code.gs` con una hoja de cálculo simulada (`tests/fake-gas.js`, que imita también conversiones automáticas de Sheets como `1/3` → fecha) y comprueba que su corrección (incluida la de respuesta corta de `js/short.js`) coincide con `js/grading.js` con miles de casos aleatorios. **Si cambias la lógica de corrección o el formato de las citas de imágenes en uno de los dos archivos, cámbiala también en el otro.**

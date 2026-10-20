@@ -3,10 +3,11 @@ import { apiGet, apiPost, NetworkError, ConfigError } from "./api.js";
 import { parseGift, GiftError } from "./gift.js";
 import { h } from "./dom.js";
 import { studentLink, randomCode, formatNumber } from "./util.js";
-import { parsePenalty, questionValue, isOpenQuestion } from "./grading.js";
+import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./grading.js";
 import { collectImageRefs, matchImage, MAX_IMAGES, MAX_TOTAL_IMAGE_CHARS } from "./images.js";
 import { prepareImage } from "./image-encode.js";
 import { richNodes } from "./rich.js";
+import { caseMatters } from "./short.js";
 import { showCorrection, exportNotes } from "./correction.js";
 
 const TOKEN_KEY = "admin_token";
@@ -40,6 +41,14 @@ function errorText(e) {
   if (e instanceof ConfigError) return "Falta configurar APPS_SCRIPT_URL en js/config.js.";
   if (e instanceof NetworkError) return "No hay conexión con el servidor. Inténtalo de nuevo.";
   return "Ha ocurrido un error inesperado.";
+}
+
+// Para la vista previa: si en las respuestas aceptadas cuentan las mayúsculas (fórmulas como NaCl) o no.
+function caseNote(answers) {
+  const strict = answers.filter(caseMatters);
+  if (!strict.length) return " (dan igual mayúsculas, tildes y espacios)";
+  if (strict.length === answers.length) return " (las mayúsculas cuentan; tildes y espacios no)";
+  return ` (las mayúsculas cuentan en ${strict.join(", ")})`;
 }
 
 const notice = (kind, text) => h("div", { class: `notice ${kind}`, role: kind === "error" ? "alert" : null }, h("p", {}, text));
@@ -234,7 +243,9 @@ function showPanel(initialExams) {
           h(
             "div",
             { class: "actions" },
-            ex.n_abiertas ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, "Corregir abiertas") : null,
+            ex.n_abiertas || ex.n_cortas
+              ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, ex.n_abiertas ? "Corregir abiertas" : "Revisar respuestas cortas")
+              : null,
             exportBtn,
             toggle,
             reviewToggle,
@@ -360,7 +371,8 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     tooBig = size > MAX_CHARS;
     const nOpen = questions.filter(isOpenQuestion).length;
     const pts = (list) => formatNumber(list.reduce((sum, q) => sum + questionValue(q), 0));
-    const tests = questions.filter((q) => !isOpenQuestion(q));
+    const tests = questions.filter((q) => !isOpenQuestion(q) && !isShortQuestion(q));
+    const shorts = questions.filter(isShortQuestion);
     preview.append(
       h("p", {}, h("strong", {}, `${questions.length} preguntas`), ` · ${size.toLocaleString("es-ES")} de 50 000 caracteres`),
       // Reparto de puntos: la nota final siempre es sobre 10 (puntos obtenidos / puntos totales × 10).
@@ -369,6 +381,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
         { class: "notice info" },
         h("p", {}, h("strong", {}, "Reparto de puntos")),
         h("p", {}, `Test: ${tests.length} ${tests.length === 1 ? "pregunta" : "preguntas"} · ${pts(tests)} puntos.`),
+        shorts.length ? h("p", {}, `Respuesta corta: ${shorts.length} ${shorts.length === 1 ? "pregunta" : "preguntas"} · ${pts(shorts)} puntos (se corrigen solas; los errores no restan).`) : null,
         nOpen ? h("p", {}, `Abiertas: ${nOpen} ${nOpen === 1 ? "pregunta" : "preguntas"} · ${pts(questions.filter(isOpenQuestion))} puntos (las corriges tú en la hoja de Google).`) : null,
         h("p", {}, `Total: ${pts(questions)} puntos → la nota se calcula sobre 10.`)
       ),
@@ -380,8 +393,12 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
           h(
             "div",
             { class: "q-preview" },
-            h("div", { class: "q-text" }, h("strong", {}, `${i + 1}. `, q.title ? `[${q.title}] ` : ""), ...richNodes(q.text, imageMap()), h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}${isOpenQuestion(q) ? " · abierta" : ""}`)),
-            isOpenQuestion(q) ? h("p", { class: "muted small" }, "Respuesta abierta: el alumno escribe en un cuadro de texto.") : h("ol", {}, q.options.map((o) => h("li", { class: o.id === q.correct ? "correct" : null }, o.text, o.id === q.correct ? " ✓" : "")))
+            h("div", { class: "q-text" }, h("strong", {}, `${i + 1}. `, q.title ? `[${q.title}] ` : ""), ...richNodes(q.text, imageMap()), h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}${isOpenQuestion(q) ? " · abierta" : isShortQuestion(q) ? " · respuesta corta" : ""}`)),
+            isOpenQuestion(q)
+              ? h("p", { class: "muted small" }, "Respuesta abierta: el alumno escribe en un cuadro de texto.")
+              : isShortQuestion(q)
+                ? h("p", { class: "small" }, `Respuesta corta. ${q.respuestas.length === 1 ? "Válida" : "Válidas"}: `, h("strong", { class: "correct" }, q.respuestas.join(" · ")), caseNote(q.respuestas))
+                : h("ol", {}, q.options.map((o) => h("li", { class: o.id === q.correct ? "correct" : null }, o.text, o.id === q.correct ? " ✓" : "")))
           )
         )
       )
@@ -521,6 +538,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
       const needs = [];
       if (imagenes.length) needs.push(["imagenes", "guardar imágenes"]);
       if (questions.some((q) => isOpenQuestion(q) || questionValue(q) !== 1)) needs.push(["abiertas", "usar preguntas abiertas ni puntos por pregunta"]);
+      if (questions.some(isShortQuestion)) needs.push(["cortas", "corregir preguntas de respuesta corta"]);
       if (needs.length) {
         const v = await apiGet({ action: "version" });
         const missing = needs.find(([f]) => !v.ok || !Array.isArray(v.funciones) || !v.funciones.includes(f));
