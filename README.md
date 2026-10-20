@@ -237,7 +237,7 @@ Requiere `Code.gs` actualizado: si no lo está, el panel lo detecta y **no publi
 
 1. Abre `admin.html` e introduce tu token (se guarda solo en tu navegador).
 2. En **Crear examen**, sube el archivo (o pega el texto). Verás una vista previa con la respuesta correcta marcada; revisa que sea la que esperas. Si hay errores, la pantalla te dice en qué pregunta.
-3. Rellena los ajustes: título, grupo, tiempo límite, código de acceso (opcional), **penalización por cada error**, barajar preguntas y opciones, mostrar la nota al terminar, permitir nota negativa, **vigilar salidas** (con cuántas se permiten) y, opcionalmente, **exigir pantalla completa**.
+3. Rellena los ajustes: título, grupo, tiempo límite, código de acceso (opcional), **penalización por cada error**, barajar preguntas y opciones, mostrar la nota al terminar, permitir nota negativa, **vigilar salidas** (con cuántas se permiten) y, opcionalmente, **exigir pantalla completa en ordenadores**.
 4. **Publicar examen.** Obtendrás un **enlace** y un **código QR** para dárselos a los alumnos.
 
 ### Examen vigilado (control de salidas)
@@ -264,9 +264,9 @@ La nota se calcula con normalidad: la app **no pone un 0 automático**. Las colu
 | Página oculta | Otra pestaña, otra app (cuando cubre todo), pantalla bloqueada | al instante en ordenadores; 2 s en tabletas (al desplazarse con el dedo desde el borde, el iPad activa a veces el Dock o la multitarea un instante) |
 | Ventana reducida | Solo en tabletas: pantalla dividida, Slide Over o Stage Manager que reducen la ventana. No cuenta mientras el alumno escribe en un cuadro de texto (el teclado en pantalla también encoge la ventana) ni al ampliar con dos dedos | 1,5 s |
 | Ventana sin foco | Solo en ordenadores: hacer clic en otra ventana o app. En tabletas no se usa, porque Safari en iPad la activa al ocultar el teclado y en otros gestos sin que el alumno salga | 2 s |
-| Salir de la pantalla completa | **Solo si marcas «Exigir pantalla completa»** al publicar (opcional, desactivada por defecto). Se pide pantalla completa al empezar; si el alumno sale de ella, el examen se oculta y un **toque** en cualquier parte (o el botón) la restaura | 5 s en tabletas, 1,5 s en ordenadores |
+| Salir de la pantalla completa | **Solo en ordenadores (Mac, Windows, Linux, Chromebook) y solo si marcas «Exigir pantalla completa en ordenadores»** al publicar (opcional, desactivada por defecto). Se pide pantalla completa al empezar; si el alumno sale de ella, el examen se oculta y un clic en cualquier parte (o el botón) la restaura. En iPad, tabletas y móviles no se pide nunca | 1,5 s |
 
-La pantalla completa es opcional porque su comportamiento depende mucho del navegador y del dispositivo. Sin ella, la vigilancia sigue funcionando con las demás señales: la pantalla dividida se detecta por el tamaño de la ventana.
+La pantalla completa es opcional y **solo se exige en ordenadores**, donde funciona bien. En tabletas y móviles su comportamiento depende demasiado del navegador, así que allí no se pide aunque marques la opción: la vigilancia sigue funcionando con las demás señales (la pantalla dividida se detecta por el tamaño de la ventana). Un mismo examen puede hacerse a la vez en ordenadores, con pantalla completa, y en iPad, sin ella.
 
 **Al empezar no se penaliza nada.** Mientras el examen no esté bien colocado (por ejemplo, empezado en pantalla dividida, o sin pantalla completa si la has exigido), el alumno ve un aviso («Pon el examen a toda la pantalla… Esto todavía no cuenta como salida») y la vigilancia no empieza hasta que lleva 1,5 s seguidos en buen estado. Si el navegador no permite la pantalla completa, no se exige. Tras pedirla, se esperan 2,5 s a que el navegador termine de cambiar de tamaño.
 
