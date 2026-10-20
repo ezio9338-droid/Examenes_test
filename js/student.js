@@ -80,6 +80,17 @@ const fsSupported = Boolean(document.documentElement.requestFullscreen || docume
 
 const fsState = { failed: false }; // true si el navegador ha rechazado la pantalla completa: ya no se exige
 
+// Tableta (o móvil): el puntero principal es el dedo. El iPad también se reconoce cuando Safari se presenta como un
+// Mac («sitio web de escritorio», activado por defecto en iPad): un «Mac» con pantalla táctil es un iPad.
+// Los portátiles táctiles (puntero principal: ratón o panel) no cuentan como tableta.
+const isTablet =
+  (window.matchMedia?.("(pointer: coarse)").matches ?? false) ||
+  (/Macintosh/.test(navigator.userAgent) && (navigator.maxTouchPoints ?? 0) > 1);
+
+// La pantalla completa, si el profesor la exige, solo se pide en ordenadores (Mac, Windows...): en tabletas y
+// móviles su comportamiento depende demasiado del navegador, y allí la vigilancia funciona sin ella.
+const fullscreenRequired = (flag) => Boolean(flag) && fsSupported && !isTablet;
+
 // Debe llamarse dentro de un gesto del usuario (pulsar o tocar). Si no se puede, se sigue sin ella.
 // Un intento automático (auto) que falla no desactiva la exigencia: el siguiente toque lo reintenta.
 async function enterFullscreen({ auto = false } = {}) {
@@ -211,7 +222,7 @@ function showStart(info, exam) {
     if (needsCode && !c) return fail("Escribe el código de acceso.");
 
     button.disabled = true;
-    if (info.control_salidas && info.pantalla_completa) enterFullscreen(); // dentro del gesto de pulsar «Empezar»
+    if (info.control_salidas && fullscreenRequired(info.pantalla_completa)) enterFullscreen(); // dentro del gesto de pulsar «Empezar»
     try {
       let loaded = exam;
       if (!loaded || needsCode) {
@@ -250,7 +261,7 @@ function showStart(info, exam) {
             "div",
             { class: "notice warn" },
             h("p", {}, h("strong", {}, "Examen vigilado")),
-            h("p", {}, exitRule(info.pantalla_completa)),
+            h("p", {}, exitRule(fullscreenRequired(info.pantalla_completa))),
             h("p", {}, "Copiar y pegar está desactivado durante el examen.")
           )
         : null,
@@ -311,8 +322,8 @@ function renderExam(session) {
   const limitSeconds = (Number(exam.tiempo_min) || 0) * 60;
   const watched = Boolean(exam.control_salidas);
   const allowed = Number.isFinite(Number(exam.salidas_permitidas)) ? Number(exam.salidas_permitidas) : 3;
-  // La pantalla completa solo se exige si el profesor lo ha marcado al publicar el examen.
-  const fsActive = Boolean(exam.pantalla_completa) && fsSupported;
+  // La pantalla completa solo se exige si el profesor lo ha marcado al publicar el examen, y solo en ordenadores.
+  const fsActive = fullscreenRequired(exam.pantalla_completa);
   const overLimit = () => progress.salidas > allowed;
   let timerId = null;
   let sending = false;
@@ -693,12 +704,7 @@ function renderExam(session) {
   // En ordenadores salir de la pantalla completa (Esc) no es un gesto natural: margen más corto que en tabletas.
   // En el iPad, deslizar el dedo para desplazarse empezando cerca del borde activa a veces el gesto del sistema
   // (Dock, multitarea, notificaciones) y la página se oculta un instante: se da un margen antes de contarlo.
-  // Tableta: el puntero principal es el dedo. El iPad también se reconoce cuando Safari se presenta como un Mac
-  // («sitio web de escritorio», activado por defecto en iPad): un «Mac» con pantalla táctil es un iPad.
-  // Los portátiles táctiles (puntero principal: ratón o panel) no cuentan como tableta.
-  const tablet =
-    (window.matchMedia?.("(pointer: coarse)").matches ?? false) ||
-    (/Macintosh/.test(navigator.userAgent) && (navigator.maxTouchPoints ?? 0) > 1);
+  const tablet = isTablet;
   const watcher = createWatcher(
     tablet ? { grace: { hidden: 2000 } } : window.matchMedia?.("(pointer: fine)").matches ? { grace: { fullscreenLost: 1500 } } : {}
   );

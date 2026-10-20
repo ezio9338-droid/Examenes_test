@@ -238,7 +238,7 @@ function showPanel(initialExams) {
         return h(
           "div",
           { class: "exam-item" },
-          h("h3", {}, ex.titulo, " ", h("span", { class: `badge ${ex.activo ? "on" : "off"}` }, ex.activo ? "Abierto" : "Cerrado"), ex.control_salidas ? " " : null, ex.control_salidas ? h("span", { class: "badge on" }, `Vigilado · ${ex.salidas_permitidas ?? 3} salidas${ex.pantalla_completa ? " · pantalla completa" : ""}`) : null, ex.revision ? " " : null, ex.revision ? h("span", { class: "badge on" }, "Revisión publicada") : null),
+          h("h3", {}, ex.titulo, " ", h("span", { class: `badge ${ex.activo ? "on" : "off"}` }, ex.activo ? "Abierto" : "Cerrado"), ex.control_salidas ? " " : null, ex.control_salidas ? h("span", { class: "badge on" }, `Vigilado · ${ex.salidas_permitidas ?? 3} salidas${ex.pantalla_completa ? " · pantalla completa en ordenadores" : ""}`) : null, ex.revision ? " " : null, ex.revision ? h("span", { class: "badge on" }, "Revisión publicada") : null),
           h(
             "p",
             { class: "muted small meta" },
@@ -353,7 +353,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     salidasInput,
     h("small", { class: "hint" }, "Al superarlas, el examen se envía solo. Con 3, a la cuarta salida se envía. Con 0, se envía en la primera.")
   );
-  const pantallaCompleta = check("Exigir pantalla completa (opcional): pide pantalla completa al empezar y oculta el examen si se sale de ella", false);
+  const pantallaCompleta = check("Exigir pantalla completa en ordenadores (Mac y Windows; opcional): pide pantalla completa al empezar y oculta el examen si se sale de ella. En iPad, tabletas y móviles no se pide", false);
   const refreshVigilar = () => {
     salidasInput.disabled = !vigilar.input.checked;
     pantallaCompleta.input.disabled = !vigilar.input.checked;
