@@ -89,7 +89,6 @@ Escribe las preguntas en un archivo de texto con este formato (la respuesta corr
 - El título `::P01::` es opcional.
 - Cada pregunta tiene **exactamente una** opción correcta (`=`) y al menos dos opciones en total.
 - Si exportas desde Moodle, los pesos `%-33.33333%` se ignoran: la penalización la calcula la aplicación.
-- **Que la correcta no sea la opción más larga.** Al escribir preguntas (y sobre todo si las genera una IA) la opción correcta suele salir más larga y detallada que las demás, y los alumnos lo aprenden. Escribe las incorrectas con una longitud parecida o mayor, con detalles creíbles pero falsos.
 - Para escribir los caracteres `: = ~ # { }` dentro de un texto, ponles delante una barra invertida (`\=`, `\{`…).
 
 **Guarda estos archivos fuera del repositorio** (llevan las soluciones). El `.gitignore` bloquea `*.gift` y `*.txt`, pero lo más seguro es no ponerlos nunca en la carpeta del proyecto.
@@ -207,7 +206,7 @@ PUNTUACIÓN QUE QUIERO:
 | Una abierta concreta | «La última pregunta es abierta y vale 4 puntos.» |
 | Respuesta corta | «Añade 5 preguntas de respuesta corta de formulación (fórmula ↔ nombre), de 0,5 puntos.» |
 
-No hace falta que sumen 10: la nota se proporciona sobre 10 con el total. Revisa siempre la **vista previa del panel** (respuesta correcta marcada ✓, valor de cada pregunta y reparto total) antes de publicar: la IA puede equivocarse, y la corrección del test depende de que la opción marcada con `=` sea la buena. Fíjate también en que la opción correcta no sea casi siempre la más larga.
+No hace falta que sumen 10: la nota se proporciona sobre 10 con el total. Revisa siempre la **vista previa del panel** (respuesta correcta marcada ✓, valor de cada pregunta y reparto total) antes de publicar: la IA puede equivocarse, y la corrección del test depende de que la opción marcada con `=` sea la buena. Fíjate también en que la IA no haya puesto casi siempre la opción correcta como la más larga.
 
 ### Imágenes en las preguntas
 
