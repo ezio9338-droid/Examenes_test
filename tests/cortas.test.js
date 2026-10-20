@@ -199,3 +199,33 @@ test("exportExam: devuelve el GIFT original tal como se publicó; sin él (exám
   const formula = env.post({ action: "createExam", token: "secreto", titulo: "F", gift: "=raro{=a~b}", preguntas: parseGift(GIFT) });
   assert.equal(env.post({ action: "exportExam", token: "secreto", examId: formula.id }).gift, "\n=raro{=a~b}");
 });
+
+test("hojas con columnas añadidas al final: se colocan en su sitio del diseño sin perder datos", () => {
+  const env = makeEnv();
+  const r = env.post({ action: "createExam", token: "secreto", titulo: "Química", preguntas: parseGift(GIFT) });
+  const sheet = env.results(r.id);
+  const design = [...sheet.rows[0]];
+  // como una hoja de una versión anterior: sin las columnas nuevas, que luego se añadieron al final
+  const late = ["desconexiones", "segundos_sin_conexion", "cortas_manual"];
+  const old = design.filter((h) => !late.includes(h));
+  sheet.rows = [[...old, ...late]];
+  env.post({ action: "submit", examId: r.id, nombre: "Ana", apellidos: "López", grupo: "B", envioId: "e1", respuestas: { q2: "NaCl" }, desconexiones: 2, segundos_sin_conexion: 9 });
+  assert.deepEqual([...sheet.rows[0]], design, "las columnas quedan en el orden del diseño");
+  const cellOf = (name) => sheet.rows[1][sheet.rows[0].indexOf(name)];
+  assert.deepEqual([cellOf("apellidos"), cellOf("desconexiones"), cellOf("segundos_sin_conexion"), cellOf("aciertos")], ["López", 2, 9, 1]);
+  // y siguen funcionando la corrección a mano y la lectura de resultados
+  env.post({ action: "grade", token: "secreto", examId: r.id, envioId: "e1", qid: "q3", correcta: true });
+  assert.equal(cellOf("cortas_manual"), '{"q3":true}');
+  assert.deepEqual([...sheet.rows[0]], design);
+  assert.equal(plain(env.post({ action: "results", token: "secreto", examId: r.id })).rows[0].desconexiones, 2);
+
+  // una columna que añada el profesor no se pierde: queda al final
+  sheet.rows[0].push("mis notas");
+  sheet.rows[1].push("revisar");
+  sheet.rows[0] = [...sheet.rows[0].slice(0, 5), "segundos_sin_conexion", ...sheet.rows[0].slice(5).filter((h) => h !== "segundos_sin_conexion")];
+  sheet.rows[1] = sheet.rows[0].map((h) => (h === "mis notas" ? "revisar" : h === "segundos_sin_conexion" ? 9 : null));
+  env.fn("setup")();
+  assert.deepEqual([...sheet.rows[0]], [...design, "mis notas"]);
+  assert.equal(sheet.rows[1][sheet.rows[0].indexOf("mis notas")], "revisar");
+  assert.equal(sheet.rows[1][sheet.rows[0].indexOf("segundos_sin_conexion")], 9);
+});

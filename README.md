@@ -334,7 +334,8 @@ Cuando haya mejoras en el repositorio original:
 1. **Tu copia en GitHub:** en tu repositorio pulsa **Sync fork → Update branch**. Tu `js/config.js` (con tu URL) se conserva mientras no haya cambios del original en ese archivo; compruébalo después. Si aparece un conflicto, **conserva tu propia URL**, nunca elijas «descartar cambios».
 2. **Tu script de Google:** el backend vive en Google, no en GitHub, así que hay que copiarlo a mano. Abre `apps-script/Code.gs`, copia todo (botón **Copy raw file**), pégalo en el editor de Apps Script y guarda.
 3. Publica una **versión nueva sin cambiar la URL**: **Implementar → Gestionar implementaciones → ✏️ Editar → Versión: Nueva versión → Implementar**. Si eliges «Nueva implementación» obtendrás una URL distinta y tendrás que actualizar `js/config.js`.
-4. **Publica de nuevo** los exámenes que quieras que usen las novedades (los ya publicados conservan su comportamiento y su hoja).
+4. **Actualiza el diseño de las hojas (recomendado):** en el editor de Apps Script elige la función `setup` en el desplegable y pulsa **Ejecutar**. Añade a las hojas de resultados ya existentes las columnas nuevas, las coloca en su sitio (por ejemplo, `desconexiones` junto a `salidas`) y les da el mismo formato que a las demás: cabecera azul, colores y columnas técnicas ocultas. No se pierde ningún dato, y las columnas que hayas añadido tú quedan al final. Si no lo haces, cada hoja se arregla sola la próxima vez que un alumno envíe ese examen.
+5. **Publica de nuevo** los exámenes que quieras que usen las novedades (los ya publicados conservan su comportamiento y su hoja).
 
 Si el panel te dice que el script no está actualizado (al publicar con penalización elegida, pantalla completa o imágenes), es que falta el paso 2 o el 3.
 
