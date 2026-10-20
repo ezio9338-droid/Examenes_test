@@ -14,7 +14,7 @@ const EXAM_HEADERS = [
   'id', 'titulo', 'grupo_destino', 'activo', 'codigo_acceso', 'tiempo_min',
   'barajar_preguntas', 'barajar_opciones', 'mostrar_nota', 'permitir_negativa',
   'preguntas_json', 'creado', 'control_salidas', 'salidas_permitidas', 'penalizacion',
-  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones'
+  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones', 'gift'
 ];
 // Hoja de resultados (una por examen). Orden de las columnas de las hojas nuevas; las hojas de versiones
 // anteriores se leen por el nombre de la cabecera y reciben al final las columnas extra que les falten.
@@ -419,8 +419,9 @@ function createExam_(p) {
       toBool_(p.pantalla_completa),
       resultsSheet.getSheetId(),
       false, // revisión: la publica el profesor desde el panel cuando todos han hecho el examen
-      cleanInstructions_(p.instrucciones)
-    ], [1, 3, 5, 15, 19]);
+      cleanInstructions_(p.instrucciones),
+      storedGift_(p.gift)
+    ], [1, 3, 5, 15, 19, 20]);
     formatExamsSheet_(getExamsSheet_()); // también embellece la hoja de quien ya la tenía
     storeImages_(id, images);
   } finally {
@@ -561,7 +562,8 @@ function exportExam_(p) {
   if (auth) return auth;
   var exam = findExam_(p.examId);
   if (!exam) return fail_('not_found', 'Este examen no existe.');
-  return { ok: true, titulo: exam.titulo, instrucciones: exam.instrucciones, preguntas: JSON.parse(exam.preguntas_json) };
+  // El GIFT original, tal como se publicó (vacío en los exámenes anteriores: el panel lo genera de las preguntas).
+  return { ok: true, titulo: exam.titulo, instrucciones: exam.instrucciones, gift: exam.gift.trim() ? exam.gift : '', preguntas: JSON.parse(exam.preguntas_json) };
 }
 
 // Datos para la pantalla de corrección del panel: una fila por envío, con las respuestas abiertas y sus puntos.
@@ -911,6 +913,14 @@ function checkCode_(exam, code) {
   var given = String(code === undefined || code === null ? '' : code).trim();
   if (given === '') return 'code_required';
   return given.toLowerCase() === exam.codigo_acceso.toLowerCase() ? null : 'bad_code';
+}
+
+// Texto GIFT original del examen, para poder exportarlo tal cual. Si no cabe en una celda se guarda vacío
+// (al exportar se genera de las preguntas). Un salto de línea delante evita que Sheets lo tome por una fórmula.
+function storedGift_(text) {
+  if (typeof text !== 'string' || !text.trim() || text.length > MAX_CHARS) return '';
+  var t = text.replace(/\r\n?/g, '\n');
+  return /^[=+\-@]/.test(t) ? '\n' + t : t;
 }
 
 // Instrucciones del examen: se conservan los saltos de línea; como mucho MAX_INSTRUCTIONS caracteres.
@@ -1393,6 +1403,7 @@ function formatExamsSheet_(sh) {
     sh.setColumnWidth(col('revision'), 90);
     sh.setColumnWidth(col('instrucciones'), 260);
     sh.hideColumns(col('preguntas_json'), 1);
+    sh.hideColumns(col('gift'), 1);
     sh.hideColumns(col('hoja_id'), 1);
   } catch (err) {
     console.error(err);
@@ -1507,7 +1518,8 @@ function readExams_() {
       pantalla_completa: toBool_(r[15]),
       hoja_id: r[16] === '' || r[16] === undefined ? '' : String(r[16]),
       revision: toBool_(r[17]),
-      instrucciones: r[18] === undefined ? '' : String(r[18])
+      instrucciones: r[18] === undefined ? '' : String(r[18]),
+      gift: r[19] === undefined ? '' : String(r[19])
     });
   }
   return out;

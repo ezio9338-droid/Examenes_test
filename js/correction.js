@@ -58,7 +58,11 @@ export async function exportGift(token, ex) {
   const comment = [`${res.titulo}`, "Exportado desde el panel. Lleva las soluciones: no lo subas al repositorio."];
   // Las instrucciones no forman parte del GIFT: van como comentario para no perderlas.
   if (res.instrucciones) comment.push("", "Instrucciones para el alumno:", ...String(res.instrucciones).split("\n"));
-  download(`${safeName(res.titulo)}.gift`, toGift(res.preguntas, comment.join("\n")), "text/plain");
+  // El GIFT original tal como se publicó; los exámenes anteriores no lo guardaron y se genera de las preguntas.
+  const text = res.gift
+    ? `${comment.map((l) => (l ? `// ${l}` : "//")).join("\n")}\n\n${String(res.gift).replace(/^\n+/, "")}`
+    : toGift(res.preguntas, comment.join("\n"));
+  download(`${safeName(res.titulo)}.gift`, text, "text/plain");
   return null;
 }
 

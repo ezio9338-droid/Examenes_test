@@ -572,6 +572,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
         tiempo_min: Number(tiempo.value) || 0,
         codigo_acceso: codigo.value.trim(),
         instrucciones: instrucciones.value.trim(),
+        gift: gift.value, // el GIFT original, para poder exportarlo tal cual
         barajar_preguntas: barPreg.input.checked,
         barajar_opciones: barOpc.input.checked,
         mostrar_nota: mostrar.input.checked,
