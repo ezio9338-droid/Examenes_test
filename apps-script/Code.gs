@@ -6,7 +6,7 @@
  *
  * - La corrección se hace AQUÍ, nunca en el navegador del alumno.
  * - El token de administración vive en Propiedades del script (ADMIN_TOKEN).
- * - gradeExam_ replica exactamente js/grading.js (hay un test que lo comprueba).
+ * - gradeExam_ replica exactamente js/grading.js y shortAnswerMatches_ js/short.js (hay tests que lo comprueban).
  */
 
 const SHEET_EXAMS = 'Examenes';
@@ -35,6 +35,8 @@ const MAX_QUESTIONS = 200;
 const MAX_OPTIONS = 26;
 const MAX_VALUE = 100;        // puntos máximos de una pregunta
 const MAX_OPEN_CHARS = 4000;  // longitud máxima de una respuesta abierta
+const MAX_SHORT_CHARS = 200;  // longitud máxima de una respuesta corta (y de cada respuesta aceptada)
+const MAX_SHORT_ANSWERS = 20; // respuestas aceptadas por pregunta de respuesta corta
 
 // Imágenes de los enunciados: ![descripción](archivo.png). Se guardan troceadas en la hoja "Imagenes".
 const SHEET_IMAGES = 'Imagenes';
@@ -46,7 +48,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -160,7 +162,7 @@ function getExam_(params) {
           id: q.id,
           title: q.title,
           text: q.text,
-          tipo: isOpen_(q) ? 'abierta' : 'test',
+          tipo: questionType_(q), // nunca las respuestas aceptadas de las de respuesta corta
           valor: questionValue_(q),
           options: (q.options || []).map(function (o) { return { id: o.id, text: o.text }; })
         };
@@ -197,12 +199,18 @@ function submit_(p) {
     return fail_('invalid_answers', 'Las respuestas no tienen el formato esperado.');
   }
   var known = {}, openIds = {};
-  questions.forEach(function (q) { if (isOpen_(q)) openIds[q.id] = true; else known[q.id] = true; });
+  questions.forEach(function (q) { if (isOpen_(q)) openIds[q.id] = true; else known[q.id] = q; });
   for (var key in answers) {
     if (!Object.prototype.hasOwnProperty.call(answers, key)) continue;
     var v = answers[key];
     if (!known[key] || !(v === null || typeof v === 'string')) {
       return fail_('invalid_answers', 'Las respuestas no corresponden a este examen.');
+    }
+    if (isShort_(known[key]) && v !== null) {
+      answers[key] = v.replace(/\s+/g, ' ').trim();
+      if (answers[key].length > MAX_SHORT_CHARS) {
+        return fail_('invalid_answers', 'Una respuesta corta supera los ' + MAX_SHORT_CHARS + ' caracteres.');
+      }
     }
   }
 
@@ -488,6 +496,13 @@ function review_(p) {
           return base;
         }
         var given = answers[q.id];
+        if (isShort_(q)) {
+          base.tipo = 'corta';
+          base.correctas = q.respuestas.slice();
+          base.respuesta = typeof given === 'string' && given.trim() !== '' ? given : null;
+          base.acertada = base.respuesta !== null && shortAnswerMatches_(q.respuestas, base.respuesta);
+          return base;
+        }
         base.tipo = 'test';
         base.options = (q.options || []).map(function (o) { return { id: o.id, text: o.text }; });
         base.correcta = q.correct;
@@ -567,7 +582,7 @@ function results_(p) {
     ok: true,
     exam: {
       id: exam.id, titulo: exam.titulo,
-      preguntas: questions.map(function (q, i) { return { id: q.id, n: i + 1, title: q.title, text: q.text, tipo: isOpen_(q) ? 'abierta' : 'test', valor: questionValue_(q) }; }),
+      preguntas: questions.map(function (q, i) { return { id: q.id, n: i + 1, title: q.title, text: q.text, tipo: questionType_(q), valor: questionValue_(q) }; }),
       imagenes: loadImages_(exam.id, questions)
     },
     rows: out
@@ -650,6 +665,14 @@ function isOpen_(q) {
   return !!q && q.tipo === 'abierta';
 }
 
+function isShort_(q) {
+  return !!q && q.tipo === 'corta';
+}
+
+function questionType_(q) {
+  return isOpen_(q) ? 'abierta' : isShort_(q) ? 'corta' : 'test';
+}
+
 function gradeExam_(questions, answers, opts) {
   var allowNegative = !!(opts && opts.allowNegative);
   var penalty = (opts && opts.penalty) || null; // {num, den}: fracción de punto por error; null = 1/(opciones-1)
@@ -664,6 +687,17 @@ function gradeExam_(questions, answers, opts) {
     if (isOpen_(q)) { abiertas++; return; }
     puntosTestMax += valor;
     var given = answers ? answers[q.id] : undefined;
+    if (isShort_(q)) {
+      if (given !== undefined && given !== null && typeof given !== 'string') {
+        throw new Error('Respuesta no válida en ' + q.id);
+      }
+      if (!given || !given.trim()) blancos++;
+      else if (shortAnswerMatches_(q.respuestas, given)) {
+        aciertos++;
+        valorAciertos += valor;
+      } else errores++; // sin penalización: es difícil acertar escribiendo al azar
+      return;
+    }
     if (given === undefined || given === null || given === '') {
       blancos++;
       return;
@@ -694,6 +728,51 @@ function gradeExam_(questions, answers, opts) {
 
   return { aciertos: aciertos, errores: errores, blancos: blancos, puntos: puntos, puntosTest: puntosTest,
     puntosTestMax: round2(puntosTestMax), puntosTotal: round2(puntosTotal), abiertas: abiertas, nota: nota };
+}
+
+/* ------------------------------------------------------------------ */
+/* Respuesta corta (réplica exacta de js/short.js)                     */
+/* ------------------------------------------------------------------ */
+
+// ¿Importan las mayúsculas? Sí si hay alguna que no sea solo la inicial de una palabra de 3 o más letras
+// (NaCl, CO2, Fe, pH → sí; Oxígeno, Ley de Ohm → no).
+function caseMatters_(answer) {
+  return String(answer === undefined || answer === null ? '' : answer)
+    .normalize('NFKC')
+    .split(/\s+/)
+    .some(function (word) {
+      var letters = word.replace(/[^\p{L}]/gu, '');
+      if (letters === letters.toLowerCase()) return false;
+      var rest = letters.slice(1);
+      return rest !== rest.toLowerCase() || letters.length < 3;
+    });
+}
+
+// Forma comparable: sin tildes, espacios de más ni punto final; subíndices (H₂O) como dígitos normales.
+function shortKey_(text, keepCase) {
+  var t = String(text === undefined || text === null ? '' : text)
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\.+$/, '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC');
+  return keepCase ? t : t.toLowerCase();
+}
+
+function shortAnswerMatches_(accepted, given) {
+  var number = /^[+-]?\d+(?:[.,]\d+)?$/;
+  return (accepted || []).some(function (answer) {
+    var keep = caseMatters_(answer);
+    var a = shortKey_(answer, keep);
+    var b = shortKey_(given, keep);
+    if (!a) return false;
+    if (a.indexOf(' ') === -1) b = b.replace(/ /g, ''); // "Na Cl" vale por "NaCl"
+    if (number.test(a) && number.test(b)) return Number(a.replace(',', '.')) === Number(b.replace(',', '.'));
+    return a === b;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -977,6 +1056,20 @@ function validateQuestions_(qs) {
         throw new Error('Pregunta ' + n + ': una pregunta abierta no lleva opciones.');
       }
       return { id: q.id, title: title, text: text, options: [], correct: null, tipo: 'abierta', valor: valor };
+    }
+    if (q.tipo === 'corta') {
+      if (Array.isArray(q.options) && q.options.length) {
+        throw new Error('Pregunta ' + n + ': una pregunta de respuesta corta no lleva opciones.');
+      }
+      if (!Array.isArray(q.respuestas) || !q.respuestas.length || q.respuestas.length > MAX_SHORT_ANSWERS) {
+        throw new Error('Pregunta ' + n + ': debe tener entre 1 y ' + MAX_SHORT_ANSWERS + ' respuestas aceptadas.');
+      }
+      var respuestas = q.respuestas.map(function (r) {
+        var t = typeof r === 'string' ? r.replace(/\s+/g, ' ').trim() : '';
+        if (!t || t.length > MAX_SHORT_CHARS) throw new Error('Pregunta ' + n + ': respuestas aceptadas no válidas.');
+        return t;
+      });
+      return { id: q.id, title: title, text: text, options: [], correct: null, respuestas: respuestas, tipo: 'corta', valor: valor };
     }
     if (q.tipo !== undefined && q.tipo !== 'test') throw new Error('Pregunta ' + n + ': tipo de pregunta no válido.');
     if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > MAX_OPTIONS) {

@@ -1,4 +1,5 @@
 // Corrección con penalización por error. Función pura.
+import { shortAnswerMatches } from "./short.js";
 // La misma lógica está replicada en apps-script/Code.gs: si cambia una, cambia la otra.
 
 const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
@@ -37,13 +38,18 @@ export function questionValue(q) {
 /** Las preguntas abiertas no se corrigen solas: las evalúa el profesor en la hoja. */
 export const isOpenQuestion = (q) => q?.tipo === "abierta";
 
+/** Las de respuesta corta se corrigen solas comparando el texto con las respuestas aceptadas. */
+export const isShortQuestion = (q) => q?.tipo === "corta";
+
 /**
  * Corrige la parte tipo test. Cada pregunta vale `valor` puntos (1 por defecto):
  * acierto +valor, error −valor × penalización, en blanco 0. Las preguntas abiertas no puntúan aquí,
  * pero su valor cuenta en el total, de modo que la nota final queda sobre 10 con todas las preguntas.
+ * Las de respuesta corta cuentan como las de test (acierto, error o en blanco), pero sus errores no restan.
  *
- * @param {{id:string, valor?:number, tipo?:string, options:{id:string}[], correct:string}[]} questions
- * @param {Record<string,string|null|undefined>} answers  id de pregunta -> id de opción (o null/ausente = en blanco)
+ * @param {{id:string, valor?:number, tipo?:string, options:{id:string}[], correct:string, respuestas?:string[]}[]} questions
+ * @param {Record<string,string|null|undefined>} answers  id de pregunta -> id de opción, o el texto escrito
+ *   en las de respuesta corta (null/ausente/vacío = en blanco)
  * @param {{allowNegative?: boolean, penalty?: {num:number, den:number}|null}} [opts]
  *   penalty: fracción de punto que resta cada error; null/ausente = 1/(opciones-1) en cada pregunta
  * @returns {{aciertos:number, errores:number, blancos:number, puntos:number, puntosTest:number,
@@ -75,6 +81,17 @@ export function gradeExam(questions, answers, opts = {}) {
     }
     puntosTestMax += valor;
     const given = answers?.[q.id];
+    if (isShortQuestion(q)) {
+      if (given !== undefined && given !== null && typeof given !== "string") {
+        throw new Error(`Respuesta no válida en ${q.id}`);
+      }
+      if (!given || !given.trim()) blancos++;
+      else if (shortAnswerMatches(q.respuestas, given)) {
+        aciertos++;
+        valorAciertos += valor;
+      } else errores++; // sin penalización: es difícil acertar escribiendo al azar
+      continue;
+    }
     if (given === undefined || given === null || given === "") {
       blancos++;
       continue;

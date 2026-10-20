@@ -29,6 +29,7 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
       const q = { id: `q${i + 1}`, options: ids.map((id) => ({ id })), correct: ids[Math.floor(rnd() * k)] };
       const r = rnd();
       if (r < 0.2) { q.tipo = "abierta"; q.options = []; q.correct = null; }
+      else if (r < 0.35) { q.tipo = "corta"; q.options = []; q.correct = null; q.respuestas = ["NaCl", "cloruro de sodio"]; }
       if (r > 0.4) q.valor = Math.round((0.25 + rnd() * 4) * 4) / 4;
       return q;
     });
@@ -36,6 +37,7 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
     for (const q of qs) {
       const r = rnd();
       if (r < 0.25 || q.tipo === "abierta") continue;
+      if (q.tipo === "corta") { ans[q.id] = ["NaCl", "nacl", "Cloruro de Sodio", "  ", "KCl"][Math.floor(rnd() * 5)]; continue; }
       ans[q.id] = r < 0.6 ? q.correct : q.options[Math.floor(rnd() * q.options.length)].id;
     }
     const allowNegative = rnd() < 0.5;
@@ -483,7 +485,7 @@ const publishImg = (env, extra = {}) =>
 
 test("version: el panel puede saber qué funciones tiene el script", () => {
   const env = makeEnv();
-  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision"] });
+  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas"] });
 });
 
 test("imágenes: se guardan troceadas, se devuelven al alumno y las preguntas no filtran la solución", () => {

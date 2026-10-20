@@ -88,7 +88,7 @@ test("error si hay más de una correcta", () => {
 });
 
 test("error si hay menos de 2 opciones", () => {
-  assert.throws(() => parseGift("A{=x}"), /Pregunta 1.*al menos 2/);
+  assert.throws(() => parseGift("A{~x}"), /Pregunta 1.*al menos 2/);
 });
 
 test("error si falta el bloque de respuestas o el cierre", () => {
@@ -98,7 +98,7 @@ test("error si falta el bloque de respuestas o el cierre", () => {
 
 test("recoge todos los errores a la vez", () => {
   try {
-    parseGift("A{=x}\n\nB{=x~y}\n\nC{~x~y}");
+    parseGift("A{~x}\n\nB{=x~y}\n\nC{~x~y}");
     assert.fail("debía fallar");
   } catch (e) {
     assert.equal(e.errors.length, 2);
