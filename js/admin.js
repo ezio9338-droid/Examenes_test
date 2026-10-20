@@ -52,23 +52,6 @@ function caseNote(answers) {
 }
 
 const MAX_INSTRUCTIONS = 2000;
-// Plantillas opcionales para el campo de instrucciones (no llevan soluciones).
-const INSTRUCTION_TEMPLATES = [
-  {
-    label: "Formulación inorgánica",
-    text: `Escribe en cada cuadro solo el nombre o la fórmula, sin frases.
-
-NOMBRAR: puedes usar la nomenclatura de Stock o la sistemática (con prefijos). Por ejemplo, para Fe2O3 valen «óxido de hierro(III)» y «trióxido de dihierro».
-- Números romanos: en MAYÚSCULAS, con las letras I, V y X, entre paréntesis y pegados al nombre del elemento: hierro(III), cloro(VII). No uses números (3) ni minúsculas (iii).
-- Si el elemento solo tiene una valencia, no pongas número romano: cloruro de sodio, no cloruro de sodio(I).
-- Prefijos de la sistemática: mono, di, tri, tetra, penta, hexa, hepta (monóxido, dióxido, trióxido...).
-- La ortografía cuenta, tildes incluidas (óxido, hidróxido, nitrógeno, peróxido). Da igual empezar con mayúscula.
-
-FORMULAR: respeta las mayúsculas y minúsculas de cada símbolo: Co (cobalto) no es lo mismo que CO.
-- Los subíndices se escriben como números normales justo después del símbolo, sin espacios: CaCl2 (CaCl₂), Fe2O3.
-- Los grupos se escriben entre paréntesis: Ca(OH)2.`,
-  },
-];
 const notice = (kind, text) => h("div", { class: `notice ${kind}`, role: kind === "error" ? "alert" : null }, h("p", {}, text));
 
 async function copyText(text, button) {
@@ -522,32 +505,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     h("label", { class: "field" }, h("span", {}, "Título"), titulo),
     h("div", { class: "row2" }, h("label", { class: "field" }, h("span", {}, "Grupo (opcional)"), grupo), h("label", { class: "field" }, h("span", {}, "Tiempo en minutos (0 = sin límite)"), tiempo)),
     h("label", { class: "field" }, h("span", {}, "Código de acceso (opcional)"), codigo, h("div", { style: "margin-top:6px" }, genCode)),
-    h(
-      "label",
-      { class: "field" },
-      h("span", {}, "Instrucciones para el alumno (opcional)"),
-      instrucciones,
-      h("small", { class: "hint" }, "Si lo dejas vacío no se muestra nada. Si escribes algo, aparece al principio del examen, encima de la primera pregunta, cuando el alumno ya ha empezado."),
-      h(
-        "div",
-        { class: "actions", style: "margin-top:6px" },
-        INSTRUCTION_TEMPLATES.map((t) =>
-          h(
-            "button",
-            {
-              class: "btn secondary small",
-              type: "button",
-              onclick: () => {
-                if (instrucciones.value.trim() && instrucciones.value.trim() !== t.text && !confirm("¿Sustituir las instrucciones que has escrito?")) return;
-                instrucciones.value = t.text;
-              },
-            },
-            `Usar instrucciones de ${t.label.toLowerCase()}`
-          )
-        ),
-        h("button", { class: "btn secondary small", type: "button", onclick: () => (instrucciones.value = "") }, "Sin instrucciones")
-      )
-    ),
+    h("label", { class: "field" }, h("span", {}, "Instrucciones para el alumno (opcional)"), instrucciones, h("small", { class: "hint" }, "Se muestran al principio del examen, encima de la primera pregunta, cuando el alumno ya ha empezado.")),
     h("label", { class: "field" }, h("span", {}, "Penalización por cada error"), penaltySelect, customRow, penaltyExample),
     barPreg.node,
     barOpc.node,
