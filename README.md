@@ -89,6 +89,7 @@ Escribe las preguntas en un archivo de texto con este formato (la respuesta corr
 - El título `::P01::` es opcional.
 - Cada pregunta tiene **exactamente una** opción correcta (`=`) y al menos dos opciones en total.
 - Si exportas desde Moodle, los pesos `%-33.33333%` se ignoran: la penalización la calcula la aplicación.
+- **Que la correcta no sea la opción más larga.** Al escribir preguntas (y sobre todo si las genera una IA) la opción correcta suele salir más larga y detallada que las demás, y los alumnos lo aprenden. Escribe las incorrectas con una longitud parecida o mayor, con detalles creíbles pero falsos.
 - Para escribir los caracteres `: = ~ # { }` dentro de un texto, ponles delante una barra invertida (`\=`, `\{`…).
 
 **Guarda estos archivos fuera del repositorio** (llevan las soluciones). El `.gitignore` bloquea `*.gift` y `*.txt`, pero lo más seguro es no ponerlos nunca en la carpeta del proyecto.
@@ -177,7 +178,7 @@ REGLAS DEL FORMATO (obligatorias):
    ~Opción incorrecta
    }
 3. Cada pregunta de test tiene EXACTAMENTE UNA opción correcta (=) y entre 2 y 6 opciones (preferible 4). Nada de varias correctas, verdadero/falso con %pesos%, huecos ni emparejamientos.
-4. Varía la posición de la opción correcta (no la pongas siempre la primera).
+4. Varía la posición de la opción correcta (no la pongas siempre la primera). La opción correcta NO debe ser la más larga ni la más detallada: escribe las incorrectas con una longitud parecida (o más largas), con detalles creíbles pero falsos, para que la longitud no delate la respuesta.
 5. No pongas feedback (#...), ni pesos (%50%), ni categorías ($CATEGORY), ni formato [html]/[markdown].
 6. PUNTOS: la marca [valor=N] va al PRINCIPIO del enunciado, justo después del título ::Pxx::. N es un número mayor que 0 (usa punto o coma decimal: 1, 2, 0.5). Si una pregunta vale 1 punto puedes omitirla.
 7. PREGUNTAS ABIERTAS (respuesta escrita por el alumno): llaves VACÍAS, sin opciones. Ejemplo:
@@ -206,7 +207,7 @@ PUNTUACIÓN QUE QUIERO:
 | Una abierta concreta | «La última pregunta es abierta y vale 4 puntos.» |
 | Respuesta corta | «Añade 5 preguntas de respuesta corta de formulación (fórmula ↔ nombre), de 0,5 puntos.» |
 
-No hace falta que sumen 10: la nota se proporciona sobre 10 con el total. Revisa siempre la **vista previa del panel** (respuesta correcta marcada ✓, valor de cada pregunta y reparto total) antes de publicar: la IA puede equivocarse, y la corrección del test depende de que la opción marcada con `=` sea la buena.
+No hace falta que sumen 10: la nota se proporciona sobre 10 con el total. Revisa siempre la **vista previa del panel** (respuesta correcta marcada ✓, valor de cada pregunta y reparto total) antes de publicar: la IA puede equivocarse, y la corrección del test depende de que la opción marcada con `=` sea la buena. Fíjate también en que la opción correcta no sea casi siempre la más larga.
 
 ### Imágenes en las preguntas
 
