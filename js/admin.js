@@ -243,7 +243,9 @@ function showPanel(initialExams) {
           h(
             "div",
             { class: "actions" },
-            ex.n_abiertas ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, "Corregir abiertas") : null,
+            ex.n_abiertas || ex.n_cortas
+              ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, ex.n_abiertas ? "Corregir abiertas" : "Revisar respuestas cortas")
+              : null,
             exportBtn,
             toggle,
             reviewToggle,

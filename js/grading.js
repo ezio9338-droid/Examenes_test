@@ -50,8 +50,9 @@ export const isShortQuestion = (q) => q?.tipo === "corta";
  * @param {{id:string, valor?:number, tipo?:string, options:{id:string}[], correct:string, respuestas?:string[]}[]} questions
  * @param {Record<string,string|null|undefined>} answers  id de pregunta -> id de opción, o el texto escrito
  *   en las de respuesta corta (null/ausente/vacío = en blanco)
- * @param {{allowNegative?: boolean, penalty?: {num:number, den:number}|null}} [opts]
+ * @param {{allowNegative?: boolean, penalty?: {num:number, den:number}|null, shortOverrides?: Record<string,boolean>}} [opts]
  *   penalty: fracción de punto que resta cada error; null/ausente = 1/(opciones-1) en cada pregunta
+ *   shortOverrides: respuestas cortas corregidas a mano (id de pregunta -> correcta o no)
  * @returns {{aciertos:number, errores:number, blancos:number, puntos:number, puntosTest:number,
  *            puntosTestMax:number, puntosTotal:number, abiertas:number, nota:number}}
  *   puntos = puntos del test sin recortar; puntosTest = lo mismo redondeado y, salvo nota negativa,
@@ -59,7 +60,7 @@ export const isShortQuestion = (q) => q?.tipo === "corta";
  *   nota = puntos / puntosTotal × 10 (provisional si hay preguntas abiertas sin corregir).
  */
 export function gradeExam(questions, answers, opts = {}) {
-  const { allowNegative = false, penalty = null } = opts;
+  const { allowNegative = false, penalty = null, shortOverrides = {} } = opts;
   if (!questions.length) throw new Error("El examen no tiene preguntas.");
 
   let aciertos = 0;
@@ -86,7 +87,7 @@ export function gradeExam(questions, answers, opts = {}) {
         throw new Error(`Respuesta no válida en ${q.id}`);
       }
       if (!given || !given.trim()) blancos++;
-      else if (shortAnswerMatches(q.respuestas, given)) {
+      else if (typeof shortOverrides[q.id] === "boolean" ? shortOverrides[q.id] : shortAnswerMatches(q.respuestas, given)) {
         aciertos++;
         valorAciertos += valor;
       } else errores++; // sin penalización: es difícil acertar escribiendo al azar

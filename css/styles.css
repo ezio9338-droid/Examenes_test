@@ -244,6 +244,7 @@ dialog.warning h2 { color: var(--danger); }
 .progress-bar { height: 100%; background: var(--ok); border-radius: 999px; transition: width 0.25s; }
 .answer-card { margin: 0 0 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--warn); border-radius: var(--radius); box-shadow: var(--shadow); }
 .answer-card.graded { border-left-color: var(--ok); }
+.answer-card.wrong { border-left-color: var(--danger); }
 .answer-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
 .answer-text { padding: 12px 14px; font-size: 1.02rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; max-height: 420px; overflow: auto; }
 .answer-text.empty { color: var(--muted); font-style: italic; }

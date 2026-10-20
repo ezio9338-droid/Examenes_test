@@ -127,14 +127,18 @@ Escribe las preguntas en un archivo de texto con este formato (la respuesta corr
 
 Cómo se compara (para que no haga falta prever cada variante):
 
-- **No importan las tildes, los espacios de más ni un punto final**: «Cloruro sodico.» vale por `cloruro sódico`. Si la respuesta no tiene espacios, tampoco cuentan los del alumno: «Na Cl» vale por `NaCl`.
+- **La ortografía cuenta, tildes incluidas**: «cloruro sodico» no vale por `cloruro sódico`. Al alumno se le avisa en la pantalla inicial y debajo de cada cuadro. Lo que no cuenta son los espacios de más ni un punto final: «Cloruro sódico.» vale. Si la respuesta no tiene espacios, tampoco cuentan los del alumno: «Na Cl» vale por `NaCl`.
 - **Mayúsculas:** si escribes la respuesta en minúsculas, o solo con la inicial en mayúscula (`Oxígeno`, `Ley de Ohm`), dan igual. Si lleva mayúsculas en medio o es un símbolo de una o dos letras (`NaCl`, `CO2`, `H2O`, `Fe`, `pH`), **tienen que coincidir**: «nacl» es incorrecto y «Co» (cobalto) no vale por `CO`. La vista previa del panel te dice, en cada pregunta, si las mayúsculas cuentan.
 - Los subíndices cuentan como números normales (`H₂O` = `H2O`) y en los números da igual la coma o el punto (`0,5` = `0.5`).
 - Para escribir `=`, `~`, `#`, `{` o `}` dentro de una respuesta aceptada, ponle delante una barra invertida (`v\=d/t`).
 
-Cuentan como las de test (acierto, error o en blanco) y suman sus puntos, pero **un error no resta**: escribiendo al azar no se acierta. En la revisión, el alumno ve lo que escribió y, si falló, la respuesta correcta. En ese cuadro tampoco se puede pegar texto. Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
+Cuentan como las de test (acierto, error o en blanco) y suman sus puntos, pero **un error no resta**: escribiendo al azar no se acierta.
 
-**Corregir las abiertas (en el panel, no en la hoja).** En «Mis exámenes», el examen con preguntas abiertas tiene el botón **Corregir abiertas**. Se corrige **pregunta por pregunta**: arriba eliges la pregunta (con cuántas llevas corregidas), y debajo ves la respuesta de cada alumno en una caja grande y legible, con su grupo y, si los hubo, los intentos de pegar. Escribes los puntos (de 0 al máximo; acepta coma decimal) o pulsas **0**, **½** o **Máximo**, y se guardan solos al pulsar Intro o salir del campo; Intro salta al siguiente alumno. «Mostrar solo las sin corregir» te deja ver lo que falta.
+**Cambiar la corrección a mano.** Llegan ya corregidas, pero puedes cambiarlas: en «Mis exámenes», el botón **Revisar respuestas cortas** (o **Corregir abiertas**, si el examen también tiene abiertas) muestra cada pregunta de respuesta corta con lo que ha escrito cada alumno, marcado como «Correcta · automática» o «Incorrecta · automática». Si un alumno escribió algo válido que no habías previsto (por ejemplo «ClNa»), pulsa **✓ Correcta**, y si quieres dar por mala una que la máquina aceptó, **✗ Incorrecta**: la nota del alumno, sus aciertos y errores se recalculan al momento en la hoja y en la revisión. Volver a pulsar lo que diría la corrección automática la deja como automática. «Mostrar solo las incorrectas» te enseña solo las que conviene mirar. Las correcciones a mano se guardan en la columna oculta `cortas_manual` de la hoja.
+
+En la revisión, el alumno ve lo que escribió y, si falló, la respuesta correcta. En ese cuadro tampoco se puede pegar texto. Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
+
+**Corregir las abiertas (en el panel, no en la hoja).** En «Mis exámenes», el examen con preguntas abiertas tiene el botón **Corregir abiertas** (en la misma pantalla están también las de respuesta corta, detrás de las abiertas). Se corrige **pregunta por pregunta**: arriba eliges la pregunta (con cuántas llevas corregidas), y debajo ves la respuesta de cada alumno en una caja grande y legible, con su grupo y, si los hubo, los intentos de pegar. Escribes los puntos (de 0 al máximo; acepta coma decimal) o pulsas **0**, **½** o **Máximo**, y se guardan solos al pulsar Intro o salir del campo; Intro salta al siguiente alumno. «Mostrar solo las sin corregir» te deja ver lo que falta.
 
 La hoja de Google guarda los puntos, y la **nota final** de cada alumno (columna `nota`) se actualiza sola: test + puntos de las abiertas, sobre 10. Mientras no corrijas, `nota` es solo la del test y la columna `pendientes` sale en ámbar.
 
@@ -175,7 +179,7 @@ REGLAS DEL FORMATO (obligatorias):
 6. PUNTOS: la marca [valor=N] va al PRINCIPIO del enunciado, justo después del título ::Pxx::. N es un número mayor que 0 (usa punto o coma decimal: 1, 2, 0.5). Si una pregunta vale 1 punto puedes omitirla.
 7. PREGUNTAS ABIERTAS (respuesta escrita por el alumno): llaves VACÍAS, sin opciones. Ejemplo:
    ::A01::[valor=3] Explica con tus palabras qué es el método científico.{}
-   PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y las fórmulas con sus mayúsculas exactas. Ejemplos:
+   PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y con su ortografía correcta (tildes incluidas), y las fórmulas con sus mayúsculas exactas. Ejemplos:
    ::C01::Escribe la fórmula del cloruro de sodio.{=NaCl}
    ::C02::¿Cómo se llama el compuesto NaCl?{=cloruro de sodio =cloruro sódico}
 8. Para escribir los caracteres : = ~ # { } dentro de un texto, ponles delante una barra invertida (\= \{ \}...). Evita fórmulas en LaTeX; escribe las fórmulas con texto simple (v = d/t, 3x^2).
@@ -371,7 +375,7 @@ css/styles.css             Estilos (claro y oscuro)
 js/config.js               URL del Apps Script
 js/api.js                  Llamadas al Apps Script (POST como text/plain, sin preflight CORS)
 js/student.js, admin.js    Lógica de cada página
-js/correction.js           Pantalla de corrección de abiertas y exportación CSV
+js/correction.js           Pantalla de corrección de abiertas y de respuesta corta, y exportación CSV
 js/gift.js                 Parser GIFT: [valor=N], respuesta corta {=a =b} y abiertas {} (función pura)
 js/grading.js              Corrección ponderada y penalización fraccionaria (pura; replicada en Code.gs)
 js/short.js                Comparación de respuestas cortas (pura; replicada en Code.gs)

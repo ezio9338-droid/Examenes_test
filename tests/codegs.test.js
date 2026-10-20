@@ -41,9 +41,11 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
       ans[q.id] = r < 0.6 ? q.correct : q.options[Math.floor(rnd() * q.options.length)].id;
     }
     const allowNegative = rnd() < 0.5;
+    const shortOverrides = {};
+    for (const q of qs) if (q.tipo === "corta" && rnd() < 0.3) shortOverrides[q.id] = rnd() < 0.5;
     assert.deepEqual(
-      JSON.parse(JSON.stringify(gradeServer(qs, ans, { allowNegative }))),
-      gradeExam(qs, ans, { allowNegative })
+      JSON.parse(JSON.stringify(gradeServer(qs, ans, { allowNegative, shortOverrides }))),
+      gradeExam(qs, ans, { allowNegative, shortOverrides })
     );
     // con penalización propia (fracción a/b)
     const den = 1 + Math.floor(rnd() * 9);

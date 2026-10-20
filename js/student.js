@@ -111,7 +111,8 @@ function exitRule(fullscreen) {
 }
 
 // `penalizacion`: fracción elegida por el profesor ("1/4", "0"...) o vacía = automática (1/(opciones-1)).
-function scoringText(questions, penalizacion) {
+// `nShorts`: preguntas de respuesta corta según el servidor, para cuando el examen aún no está cargado (código de acceso).
+function scoringText(questions, penalizacion, nShorts = 0) {
   let custom = null;
   try {
     custom = parsePenalty(penalizacion);
@@ -120,12 +121,12 @@ function scoringText(questions, penalizacion) {
   }
   const qs = questions ?? [];
   const tests = qs.filter((q) => !isOpenQuestion(q) && !isShortQuestion(q));
-  const shorts = qs.filter(isShortQuestion);
+  const shortCount = questions ? qs.filter(isShortQuestion).length : Number(nShorts) || 0;
   const opens = qs.filter(isOpenQuestion);
   const weighted = qs.some((q) => questionValue(q) !== 1); // alguna pregunta no vale 1 punto
   const ks = new Set(tests.map((q) => q.options.length));
   let penalty; // texto de lo que resta cada error, o null si no resta nada
-  if (!tests.length) {
+  if (questions && !tests.length) {
     penalty = null; // solo hay preguntas de respuesta corta o abiertas: nada resta
   } else if (custom) {
     penalty = custom.num === 0 ? null : custom.den === 1 ? `${custom.num} punto` : `${custom.num}/${custom.den} de punto`;
@@ -141,8 +142,11 @@ function scoringText(questions, penalizacion) {
     penalty ? `Cada respuesta incorrecta resta ${penalty}.` : "Las respuestas incorrectas no restan.",
     "Las preguntas en blanco ni suman ni restan.",
     ...(penalty ? ["Si no estás seguro, puedes dejarla en blanco."] : []),
-    ...(shorts.length
-      ? [`${shorts.length === 1 ? "Hay una pregunta" : `Hay ${shorts.length} preguntas`} de respuesta corta: escribes una palabra, un número o una fórmula${penalty ? ", y si fallas no resta" : ""}. Cuidado con las mayúsculas en las fórmulas (NaCl, CO2).`]
+    ...(shortCount
+      ? [
+          `${shortCount === 1 ? "Hay una pregunta" : `Hay ${shortCount} preguntas`} de respuesta corta: escribes una palabra, un número o una fórmula${penalty ? ", y si fallas no resta" : ""}.`,
+          { strong: "En las preguntas de respuesta corta se tiene en cuenta la ortografía, tildes incluidas: una palabra mal escrita cuenta como incorrecta. En las fórmulas, cuidado también con las mayúsculas (NaCl, CO2)." },
+        ]
       : []),
     ...(opens.length
       ? [`Hay ${opens.length === 1 ? "una pregunta abierta" : `${opens.length} preguntas abiertas`}: escribes tu respuesta en un cuadro de texto (no se puede copiar ni pegar) y la corrige tu profesor.`]
@@ -239,7 +243,7 @@ function showStart(info, exam) {
         "div",
         { class: "notice info" },
         h("p", {}, h("strong", {}, "Cómo se puntúa")),
-        scoringText(exam?.questions, exam?.penalizacion ?? info.penalizacion).map((t) => h("p", {}, t))
+        scoringText(exam?.questions, exam?.penalizacion ?? info.penalizacion, info.n_cortas).map((t) => (typeof t === "string" ? h("p", {}, t) : h("p", {}, h("strong", {}, t.strong))))
       ),
       info.control_salidas
         ? h(
@@ -426,7 +430,7 @@ function renderExam(session) {
         input.blur();
       }
     });
-    return h("div", { class: "open-box" }, input);
+    return h("div", { class: "open-box" }, input, h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes)."));
   }
 
   // En los cuadros de respuesta no se puede pegar, copiar, cortar ni arrastrar texto; cada intento de pegar

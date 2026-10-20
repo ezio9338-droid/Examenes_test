@@ -23,17 +23,15 @@ export function caseMatters(answer) {
     });
 }
 
-// Forma comparable: sin tildes, espacios de más ni punto final; subíndices (H₂O) como dígitos normales.
+// Forma comparable: sin espacios de más ni punto final; subíndices (H₂O) como dígitos normales.
+// Las tildes cuentan: la ortografía se tiene en cuenta.
 function shortKey(text, keepCase) {
   const t = String(text ?? "")
     .normalize("NFKC")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\.+$/, "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .normalize("NFC");
+    .trim();
   return keepCase ? t : t.toLowerCase();
 }
 
