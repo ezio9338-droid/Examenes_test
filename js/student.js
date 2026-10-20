@@ -825,6 +825,8 @@ function renderExam(session) {
     h("p", { class: "muted" }, `${who.nombre} ${who.apellidos} · ${who.grupo}`),
     watched ? h("p", { class: "muted small" }, "Examen vigilado: no salgas de esta pantalla. Las salidas quedan registradas y, si continúas, el examen se envía automáticamente.") : null,
     bar,
+    // Instrucciones del profesor, al principio del examen (texto plano, con sus saltos de línea).
+    exam.instrucciones ? h("div", { class: "notice info exam-instructions" }, h("p", {}, h("strong", {}, "Instrucciones")), h("p", {}, exam.instrucciones)) : null,
     fieldset,
     reviewBtn,
     h("p", { class: "muted small" }, "Tus respuestas se guardan automáticamente en este dispositivo."),

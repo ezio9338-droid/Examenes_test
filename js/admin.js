@@ -46,11 +46,12 @@ function errorText(e) {
 // Para la vista previa: si en las respuestas aceptadas cuentan las mayúsculas (fórmulas como NaCl) o no.
 function caseNote(answers) {
   const strict = answers.filter(caseMatters);
-  if (!strict.length) return " (dan igual mayúsculas, tildes y espacios)";
-  if (strict.length === answers.length) return " (las mayúsculas cuentan; tildes y espacios no)";
-  return ` (las mayúsculas cuentan en ${strict.join(", ")})`;
+  if (!strict.length) return " (dan igual las mayúsculas; las tildes cuentan)";
+  if (strict.length === answers.length) return " (cuentan las mayúsculas de símbolos, fórmulas y números romanos, y las tildes)";
+  return ` (cuentan las tildes, y las mayúsculas en ${strict.join(", ")})`;
 }
 
+const MAX_INSTRUCTIONS = 2000;
 const notice = (kind, text) => h("div", { class: `notice ${kind}`, role: kind === "error" ? "alert" : null }, h("p", {}, text));
 
 async function copyText(text, button) {
@@ -278,6 +279,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
   const grupo = h("input", { name: "grupo", maxlength: 60 });
   const tiempo = h("input", { name: "tiempo", type: "number", min: 0, step: 1, value: 0, inputmode: "numeric" });
   const codigo = h("input", { name: "codigo", maxlength: 40, autocomplete: "off" });
+  const instrucciones = h("textarea", { name: "instrucciones", class: "plain", maxlength: MAX_INSTRUCTIONS, rows: 5, placeholder: "Por ejemplo: escribe los números romanos con letras mayúsculas (I, V, X)…" });
   const genCode = h("button", { class: "btn secondary small", type: "button", onclick: () => (codigo.value = randomCode()) }, "Generar código");
   const check = (label, checked) => {
     const input = h("input", { type: "checkbox", checked });
@@ -503,6 +505,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     h("label", { class: "field" }, h("span", {}, "Título"), titulo),
     h("div", { class: "row2" }, h("label", { class: "field" }, h("span", {}, "Grupo (opcional)"), grupo), h("label", { class: "field" }, h("span", {}, "Tiempo en minutos (0 = sin límite)"), tiempo)),
     h("label", { class: "field" }, h("span", {}, "Código de acceso (opcional)"), codigo, h("div", { style: "margin-top:6px" }, genCode)),
+    h("label", { class: "field" }, h("span", {}, "Instrucciones para el alumno (opcional)"), instrucciones, h("small", { class: "hint" }, "Se muestran al principio del examen, encima de la primera pregunta, cuando el alumno ya ha empezado.")),
     h("label", { class: "field" }, h("span", {}, "Penalización por cada error"), penaltySelect, customRow, penaltyExample),
     barPreg.node,
     barOpc.node,
@@ -539,6 +542,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
       if (imagenes.length) needs.push(["imagenes", "guardar imágenes"]);
       if (questions.some((q) => isOpenQuestion(q) || questionValue(q) !== 1)) needs.push(["abiertas", "usar preguntas abiertas ni puntos por pregunta"]);
       if (questions.some(isShortQuestion)) needs.push(["cortas", "corregir preguntas de respuesta corta"]);
+      if (instrucciones.value.trim()) needs.push(["instrucciones", "mostrar instrucciones al alumno"]);
       if (needs.length) {
         const v = await apiGet({ action: "version" });
         const missing = needs.find(([f]) => !v.ok || !Array.isArray(v.funciones) || !v.funciones.includes(f));
@@ -555,6 +559,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
         grupo_destino: grupo.value.trim(),
         tiempo_min: Number(tiempo.value) || 0,
         codigo_acceso: codigo.value.trim(),
+        instrucciones: instrucciones.value.trim(),
         barajar_preguntas: barPreg.input.checked,
         barajar_opciones: barOpc.input.checked,
         mostrar_nota: mostrar.input.checked,
