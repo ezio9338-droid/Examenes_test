@@ -1296,12 +1296,48 @@ function newResultLayout_(questions) {
   });
   if ((questions || []).some(isShort_)) hidden.push('cortas_manual');
   hidden = hidden.concat(['tipo_envio', 'envio_id', 'motivos_salida', 'respuestas_json']);
-  return { headers: visible.concat(hidden), visible: visible.length };
+  return { headers: visible.concat(hidden), visible: visible.length, hidden: hidden.length };
 }
 
-// Solo presentación: si algo falla aquí, la hoja sigue siendo válida.
+// ¿Es una hoja con el diseño actual (lo que el profesor mira primero, empezando por los apellidos)?
+function hasResultLayout_(headers) {
+  return String(headers[0]) === 'apellidos';
+}
+
+// Coloca cada columna de una hoja con el diseño actual en su sitio: las que se añadieron en versiones posteriores
+// quedaban al final. Se mueven columnas enteras (los datos se leen siempre por el nombre de la cabecera); las que
+// no son del diseño (p. ej. añadidas por el profesor) quedan detrás. Devuelve true si ha movido alguna.
+// Usar con el lock tomado.
+function arrangeResultsSheet_(sh, questions) {
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  if (!hasResultLayout_(headers)) return false;
+  var pos = 0, moved = false;
+  newResultLayout_(questions).headers.forEach(function (name) {
+    var cur = headers.indexOf(name);
+    if (cur === -1) return;
+    if (cur !== pos) {
+      sh.moveColumns(sh.getRange(1, cur + 1), pos + 1);
+      headers.splice(pos, 0, headers.splice(cur, 1)[0]);
+      moved = true;
+    }
+    pos++;
+  });
+  return moved;
+}
+
+// Diseño de una hoja ya ordenada: sus cabeceras reales y cuántas columnas visibles y ocultas del diseño tiene.
+function sheetResultLayout_(sh, questions) {
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  var design = newResultLayout_(questions);
+  var visibleNames = design.headers.slice(0, design.visible);
+  var hiddenNames = design.headers.slice(design.visible);
+  var count = function (names) { return headers.filter(function (h) { return names.indexOf(h) !== -1; }).length; };
+  return { headers: headers, visible: count(visibleNames), hidden: count(hiddenNames) };
+}
+
+// Solo presentación: si algo falla aquí, la hoja sigue siendo válida. Se puede repetir sin problema.
+// layout = {headers: cabeceras de la hoja, visible: columnas visibles al principio, hidden: ocultas a continuación}.
 function formatResultsSheet_(sh, layout) {
-  var n = layout.headers.length;
   var vis = layout.visible;
   var rowsMax = sh.getMaxRows();
   try {
@@ -1310,8 +1346,10 @@ function formatResultsSheet_(sh, layout) {
     sh.setColumnWidth(2, 130);
     sh.setColumnWidth(3, 80);
     for (var c = 4; c <= vis; c++) sh.setColumnWidth(c, 95);
-    sh.setColumnWidth(vis - 1, 150); // fecha
-    if (n > vis) sh.hideColumns(vis + 1, n - vis);
+    var fecha = layout.headers.indexOf('fecha') + 1;
+    if (fecha) sh.setColumnWidth(fecha, 150);
+    sh.showColumns(1, vis); // una columna nueva movida a la parte visible se ve
+    if (layout.hidden) sh.hideColumns(vis + 1, layout.hidden);
   } catch (err) {
     console.error(err);
   }
@@ -1343,6 +1381,8 @@ function formatResultsSheet_(sh, layout) {
       rule('posible_duplicado', function (r) { return r.whenFormulaSatisfied('=$' + String.fromCharCode(64 + layout.headers.indexOf('posible_duplicado') + 1) + '2=TRUE').setBackground('#fff1c9').setFontColor('#8a5a00'); })
     ].filter(Boolean);
     sh.setConditionalFormatRules(rules);
+    var old = sh.getBandings();
+    for (var b = 0; b < old.length; b++) old[b].remove();
     sh.getRange(2, 1, rowsMax - 1, vis).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
   } catch (err) {
     console.error(err);
@@ -1484,13 +1524,25 @@ function getResultsSheet_(exam, questions) {
       if (String(rows[i][0]) === String(exam.id)) { exams.getRange(i + 1, col + 1).setValue(sh.getSheetId()); break; }
     }
   } else {
-    // Hoja de una versión anterior: se añaden al final las columnas que falten (por nombre).
+    // Hoja de una versión anterior: se añaden al final las columnas que falten (por nombre) y, si la hoja tiene el
+    // diseño actual, se colocan en su sitio con el mismo formato que las demás.
     var have = headerMap_(sh.getDataRange().getValues()[0].map(String));
+    var added = false;
     RESULT_EXTRA.concat(resultHeaders_(questions)).forEach(function (nm) {
-      if (have[nm] === undefined) sh.getRange(1, sh.getLastColumn() + 1).setValue(nm);
+      if (have[nm] === undefined) { sh.getRange(1, sh.getLastColumn() + 1).setValue(nm); added = true; }
     });
+    if (arrangeResultsSheet_(sh, questions) || added) refreshResultsFormat_(sh, questions);
   }
   return sh;
+}
+
+// Vuelve a dar formato a una hoja de resultados con el diseño actual (las hojas más antiguas no se tocan).
+function refreshResultsFormat_(sh, questions) {
+  var layout = sheetResultLayout_(sh, questions);
+  if (!hasResultLayout_(layout.headers)) return;
+  formatResultsSheet_(sh, layout);
+  var cm = layout.headers.indexOf('cortas_manual') + 1;
+  if (cm) setTextColumns_(sh, [cm]);
 }
 
 function readExams_() {
@@ -1537,8 +1589,20 @@ function findExam_(id) {
 /**
  * Opcional: ejecútala una vez a mano desde el editor para crear la hoja
  * "Examenes" y comprobar que los permisos están concedidos. También vuelve a dar
- * formato a la hoja "Examenes" (útil tras actualizar el script).
+ * formato a la hoja "Examenes" y a las hojas de resultados: añade las columnas nuevas,
+ * las coloca en su sitio y les da el mismo diseño que a las demás (útil tras actualizar el script).
  */
 function setup() {
-  formatExamsSheet_(getExamsSheet_());
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    formatExamsSheet_(getExamsSheet_());
+    readExams_().forEach(function (exam) {
+      if (!findResultsSheet_(exam)) return;
+      var questions = JSON.parse(exam.preguntas_json);
+      refreshResultsFormat_(getResultsSheet_(exam, questions), questions);
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
