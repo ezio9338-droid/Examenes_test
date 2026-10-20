@@ -17,8 +17,8 @@ export function csvCell(value) {
 
 /** Tabla de notas lista para Excel en español: separador «;», decimales con coma, orden por apellidos. */
 export function buildCsv(rows, hasOpen) {
-  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Intentos de pegar"];
-  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.pegados])];
+  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Desconexiones", "Segundos sin conexión", "Intentos de pegar"];
+  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.desconexiones ?? 0, num(r.segundos_sin_conexion ?? 0), r.pegados])];
   return "﻿" + lines.map((l) => l.map(csvCell).join(";")).join("\r\n") + "\r\n";
 }
 

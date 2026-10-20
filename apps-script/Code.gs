@@ -25,6 +25,8 @@ const RESULT_BASE = [
 const RESULT_EXTRA = ['salidas', 'segundos_fuera', 'tipo_envio', 'envio_id', 'motivos_salida'];
 // Columnas que se añaden siempre: puntos del test, total del examen e intentos de pegar.
 const RESULT_POINTS = ['puntos_test', 'puntos_total', 'pegados'];
+// Pérdidas de la conexión a internet durante el examen: solo se registran, no son salidas.
+const RESULT_CONNECTION = ['desconexiones', 'segundos_sin_conexion'];
 const RESULT_HEADERS = RESULT_BASE.concat(RESULT_EXTRA);
 const RESULT_TEXT_COLUMNS = ['apellidos', 'nombre', 'grupo', 'envio_id', 'motivos_salida']; // nunca números ni fechas
 const ENVIO_TYPES = ['manual', 'tiempo', 'salida'];
@@ -257,6 +259,8 @@ function submit_(p) {
   var envioId = typeof p.envioId === 'string' ? p.envioId.trim().slice(0, 64) : '';
   // Señales que provocaron cada salida (p. ej. "reduced,hidden"); solo letras y comas.
   var motivos = typeof p.motivos_salida === 'string' ? p.motivos_salida.replace(/[^A-Za-z,]/g, '').slice(0, 120) : '';
+  var desconexiones = clampNumber_(p.desconexiones, 999, 0);
+  var segundosSinConexion = clampNumber_(p.segundos_sin_conexion, 86400, 1);
 
   var lock = LockService.getScriptLock();
   try {
@@ -284,6 +288,10 @@ function submit_(p) {
       if (motivos.length > String(rows[sameSend][H.motivos_salida] || '').length) {
         sheet.getRange(sameSend + 1, H.motivos_salida + 1).setValue(motivos);
       }
+      [['desconexiones', desconexiones], ['segundos_sin_conexion', segundosSinConexion]].forEach(function (c) {
+        if (H[c[0]] === undefined) return;
+        sheet.getRange(sameSend + 1, H[c[0]] + 1).setValue(Math.max(Number(rows[sameSend][H[c[0]]]) || 0, c[1]));
+      });
     } else {
       // En hojas anteriores (sin columna de apellidos) el nombre se guarda como "Apellidos, Nombre".
       var fullName = hasApellidos || !apellidos ? nombre : apellidos + ', ' + nombre;
@@ -304,7 +312,7 @@ function submit_(p) {
         aciertos: result.aciertos, errores: result.errores, blancos: result.blancos, nota: result.nota,
         duracion_min: duracion, posible_duplicado: duplicado, respuestas_json: JSON.stringify(answers),
         salidas: salidas, segundos_fuera: segundosFuera, tipo_envio: tipoEnvio, envio_id: envioId,
-        motivos_salida: motivos,
+        motivos_salida: motivos, desconexiones: desconexiones, segundos_sin_conexion: segundosSinConexion,
         puntos_test: result.puntosTest, puntos_total: result.puntosTotal, pegados: pegados,
         pendientes: result.abiertas // preguntas abiertas sin corregir; la nota es la del test hasta que se corrija
       };
@@ -588,6 +596,8 @@ function results_(p) {
       aciertos: get('aciertos'), errores: get('errores'), blancos: get('blancos'),
       salidas: Number(get('salidas')) || 0,
       segundos_fuera: Number(get('segundos_fuera')) || 0,
+      desconexiones: Number(get('desconexiones')) || 0,
+      segundos_sin_conexion: Number(get('segundos_sin_conexion')) || 0,
       pegados: Number(get('pegados')) || 0,
       fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
       nota: finalGrade_(exam, openQs, questions, r, H),
@@ -1258,7 +1268,7 @@ function newResultLayout_(questions) {
   var open = (questions || []).filter(isOpen_);
   var visible = ['apellidos', 'nombre', 'grupo', 'nota'];
   if (open.length) visible.push('pendientes');
-  visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
+  visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'desconexiones', 'segundos_sin_conexion', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
   var hidden = ['puntos_test', 'puntos_total'];
   open.forEach(function (q) {
     var c = openColumns_(q, questions);
@@ -1307,6 +1317,8 @@ function formatResultsSheet_(sh, layout) {
       rule('pendientes', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('salidas', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c').setBold(true); }),
       rule('segundos_fuera', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c'); }),
+      rule('desconexiones', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
+      rule('segundos_sin_conexion', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00'); }),
       rule('pegados', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('posible_duplicado', function (r) { return r.whenFormulaSatisfied('=$' + String.fromCharCode(64 + layout.headers.indexOf('posible_duplicado') + 1) + '2=TRUE').setBackground('#fff1c9').setFontColor('#8a5a00'); })
     ].filter(Boolean);
@@ -1327,7 +1339,7 @@ function openColumns_(q, questions) {
 
 // Cabeceras de las columnas añadidas a una hoja de resultados, según las preguntas del examen.
 function resultHeaders_(questions) {
-  var cols = RESULT_POINTS.slice();
+  var cols = RESULT_POINTS.concat(RESULT_CONNECTION);
   var open = (questions || []).filter(isOpen_);
   open.forEach(function (q) {
     var c = openColumns_(q, questions);

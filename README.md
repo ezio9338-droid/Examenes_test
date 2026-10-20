@@ -154,7 +154,7 @@ La hoja de Google guarda los puntos, y la **nota final** de cada alumno (columna
 - Solo vale para envíos hechos con esta versión: los exámenes entregados antes no guardaron el identificador en el dispositivo.
 - Requiere `Code.gs` actualizado; si no lo está, el botón no aparece.
 
-**Exportar las notas.** El botón **Exportar notas (CSV)** de cada examen descarga una tabla limpia (apellidos, nombre, grupo, nota final, aciertos, errores, en blanco, salidas, segundos fuera, intentos de pegar), ordenada por apellidos y lista para abrir en Excel en español (separador `;`, decimales con coma).
+**Exportar las notas.** El botón **Exportar notas (CSV)** de cada examen descarga una tabla limpia (apellidos, nombre, grupo, nota final, aciertos, errores, en blanco, salidas, segundos fuera, desconexiones, segundos sin conexión, intentos de pegar), ordenada por apellidos y lista para abrir en Excel en español (separador `;`, decimales con coma).
 
 **Qué ve el alumno.** Solo la parte del test: «Parte tipo test: X sobre Y puntos» y el aviso de que las abiertas las corrige el profesor. Si quitas «Mostrar la nota al alumno», no ve nada.
 
@@ -268,7 +268,9 @@ La pantalla completa es opcional porque su comportamiento depende mucho del nave
 
 **Al empezar no se penaliza nada.** Mientras el examen no esté bien colocado (por ejemplo, empezado en pantalla dividida, o sin pantalla completa si la has exigido), el alumno ve un aviso («Pon el examen a toda la pantalla… Esto todavía no cuenta como salida») y la vigilancia no empieza hasta que lleva 1,5 s seguidos en buen estado. Si el navegador no permite la pantalla completa, no se exige. Tras pedirla, se esperan 2,5 s a que el navegador termine de cambiar de tamaño.
 
-Cada salida guarda en la hoja **qué señal la provocó** (`motivos_salida`, por ejemplo `reduced,hidden`): si en algún dispositivo salen salidas que no esperas, esa columna dice la causa.
+Cada salida guarda en la hoja **qué señal la provocó** (`motivos_salida`, por ejemplo `reduced,hidden`): si en algún dispositivo salen salidas que no esperas, esa columna dice la causa. Los motivos posibles son `hidden` (página oculta), `reduced` (ventana reducida), `blurred` y `noFocus` (otra ventana activa, solo en ordenadores) y `fullscreenLost` (salió de la pantalla completa).
+
+**Pérdida de la conexión a internet.** Cuando el dispositivo del alumno se queda sin red durante el examen (wifi caído o apagado, modo avión), **solo se registra**: no cuenta como salida, no oculta el examen y no lo envía. La hoja guarda cuántas veces la perdió (`desconexiones`) y cuánto tiempo estuvo sin ella (`segundos_sin_conexion`), las dos en ámbar cuando son mayores que 0, y añade `offline` a `motivos_salida` por cada corte (por ejemplo `hidden,offline`). Se registra en todos los exámenes, vigilados o no. Las respuestas se siguen guardando en el dispositivo; si el alumno intenta enviar sin conexión, se le avisa y puede reintentar cuando vuelva. Se detecta que el dispositivo se queda sin red; un wifi conectado pero sin salida a internet puede no detectarse.
 
 Durante un examen vigilado se pide al navegador que **mantenga la pantalla encendida**, para que el iPad no se bloquee solo mientras el alumno lee o piensa (eso contaba como salida). Funciona en iPadOS 16.4 o posterior; en versiones anteriores, sube el bloqueo automático en *Ajustes → Pantalla y brillo*.
 
@@ -286,7 +288,7 @@ Las hojas **nuevas** están pensadas para leerse de un vistazo: cabecera azul, f
 
 `apellidos | nombre | grupo | nota | (pendientes) | aciertos | errores | blancos | salidas | segundos_fuera | pegados | duracion_min | fecha | posible_duplicado`
 
-La **nota** sale en verde (aprobado) o rojo; `pendientes` (preguntas abiertas sin corregir), `salidas`, `segundos_fuera` y `pegados` se marcan en color cuando son mayores que 0. Después van **ocultas** las columnas técnicas (puntos del test, respuestas y puntos de las abiertas, `tipo_envio`, `envio_id`, `motivos_salida`, `respuestas_json`); si las necesitas, selecciona las columnas vecinas y elige «Mostrar columnas». Las hojas de exámenes anteriores conservan su formato.
+La **nota** sale en verde (aprobado) o rojo; `pendientes` (preguntas abiertas sin corregir), `salidas`, `segundos_fuera`, `desconexiones`, `segundos_sin_conexion` y `pegados` se marcan en color cuando son mayores que 0. Después van **ocultas** las columnas técnicas (puntos del test, respuestas y puntos de las abiertas, `tipo_envio`, `envio_id`, `motivos_salida`, `respuestas_json`); si las necesitas, selecciona las columnas vecinas y elige «Mostrar columnas». Las hojas de exámenes anteriores conservan su formato.
 
 El alumno rellena **Nombre** y **Apellidos** en casillas separadas, y la hoja se mantiene **ordenada alfabéticamente por apellidos** (y, si coinciden, por nombre; sin distinguir tildes ni mayúsculas) cada vez que llega un envío.
 
@@ -347,7 +349,7 @@ Si el examen no carga en los dispositivos del centro pero sí con datos móviles
 
 ## Qué datos se guardan
 
-Solo **nombre, apellidos, grupo, respuestas, nota y los datos de las salidas del examen** (cuántas y cuánto tiempo, si vigilas) de cada alumno, en tu hoja de Google. Las imágenes de los enunciados también se guardan ahí. No se piden correos ni otros datos y los alumnos no tienen cuenta. No compartas la hoja con nadie: contiene las soluciones y los nombres. Recuerda informar a las familias de este tratamiento según la política de tu centro.
+Solo **nombre, apellidos, grupo, respuestas, nota y los datos de las salidas del examen** (cuántas y cuánto tiempo, si vigilas) y de las pérdidas de conexión de cada alumno, en tu hoja de Google. Las imágenes de los enunciados también se guardan ahí. No se piden correos ni otros datos y los alumnos no tienen cuenta. No compartas la hoja con nadie: contiene las soluciones y los nombres. Recuerda informar a las familias de este tratamiento según la política de tu centro.
 
 ## Problemas frecuentes
 
