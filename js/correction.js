@@ -3,6 +3,7 @@ import { apiPost, NetworkError } from "./api.js";
 import { h } from "./dom.js";
 import { richNodes } from "./rich.js";
 import { formatNumber } from "./util.js";
+import { toGift } from "./gift.js";
 
 /* ------------------------------ exportación ------------------------------ */
 
@@ -17,13 +18,13 @@ export function csvCell(value) {
 
 /** Tabla de notas lista para Excel en español: separador «;», decimales con coma, orden por apellidos. */
 export function buildCsv(rows, hasOpen) {
-  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Intentos de pegar"];
-  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.pegados])];
+  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Desconexiones", "Segundos sin conexión", "Intentos de pegar"];
+  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.desconexiones ?? 0, num(r.segundos_sin_conexion ?? 0), r.pegados])];
   return "﻿" + lines.map((l) => l.map(csvCell).join(";")).join("\r\n") + "\r\n";
 }
 
-function download(name, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+function download(name, text, type = "text/csv") {
+  const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
   const a = h("a", { href: url, download: name });
   document.body.append(a);
   a.click();
@@ -46,6 +47,22 @@ export async function exportNotes(token, ex) {
   if (!res.rows.length) return "Todavía no hay envíos que exportar.";
   const hasOpen = res.exam.preguntas.some((q) => q.tipo === "abierta");
   download(`notas_${safeName(ex.titulo)}.csv`, buildCsv(res.rows, hasOpen));
+  return null;
+}
+
+/** Descarga las preguntas de un examen, con sus soluciones, como archivo GIFT. Devuelve un texto de error o null. */
+export async function exportGift(token, ex) {
+  const res = await apiPost({ action: "exportExam", token, examId: ex.id });
+  if (res.error === "bad_request") return "El script de Google no está actualizado: actualiza Code.gs (Nueva versión) para poder exportar el GIFT.";
+  if (!res.ok) return res.message || "No se han podido leer las preguntas.";
+  const comment = [`${res.titulo}`, "Exportado desde el panel. Lleva las soluciones: no lo subas al repositorio."];
+  // Las instrucciones no forman parte del GIFT: van como comentario para no perderlas.
+  if (res.instrucciones) comment.push("", "Instrucciones para el alumno:", ...String(res.instrucciones).split("\n"));
+  // El GIFT original tal como se publicó; los exámenes anteriores no lo guardaron y se genera de las preguntas.
+  const text = res.gift
+    ? `${comment.map((l) => (l ? `// ${l}` : "//")).join("\n")}\n\n${String(res.gift).replace(/^\n+/, "")}`
+    : toGift(res.preguntas, comment.join("\n"));
+  download(`${safeName(res.titulo)}.gift`, text, "text/plain");
   return null;
 }
 

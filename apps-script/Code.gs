@@ -14,7 +14,7 @@ const EXAM_HEADERS = [
   'id', 'titulo', 'grupo_destino', 'activo', 'codigo_acceso', 'tiempo_min',
   'barajar_preguntas', 'barajar_opciones', 'mostrar_nota', 'permitir_negativa',
   'preguntas_json', 'creado', 'control_salidas', 'salidas_permitidas', 'penalizacion',
-  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones'
+  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones', 'gift'
 ];
 // Hoja de resultados (una por examen). Orden de las columnas de las hojas nuevas; las hojas de versiones
 // anteriores se leen por el nombre de la cabecera y reciben al final las columnas extra que les falten.
@@ -25,6 +25,8 @@ const RESULT_BASE = [
 const RESULT_EXTRA = ['salidas', 'segundos_fuera', 'tipo_envio', 'envio_id', 'motivos_salida'];
 // Columnas que se añaden siempre: puntos del test, total del examen e intentos de pegar.
 const RESULT_POINTS = ['puntos_test', 'puntos_total', 'pegados'];
+// Pérdidas de la conexión a internet durante el examen: solo se registran, no son salidas.
+const RESULT_CONNECTION = ['desconexiones', 'segundos_sin_conexion'];
 const RESULT_HEADERS = RESULT_BASE.concat(RESULT_EXTRA);
 const RESULT_TEXT_COLUMNS = ['apellidos', 'nombre', 'grupo', 'envio_id', 'motivos_salida']; // nunca números ni fechas
 const ENVIO_TYPES = ['manual', 'tiempo', 'salida'];
@@ -49,7 +51,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -91,6 +93,7 @@ function handlePost_(body) {
     case 'review': return review_(body);
     case 'results': return results_(body);
     case 'grade': return grade_(body);
+    case 'exportExam': return exportExam_(body);
     default: return fail_('bad_request', 'Acción no reconocida.');
   }
 }
@@ -257,6 +260,8 @@ function submit_(p) {
   var envioId = typeof p.envioId === 'string' ? p.envioId.trim().slice(0, 64) : '';
   // Señales que provocaron cada salida (p. ej. "reduced,hidden"); solo letras y comas.
   var motivos = typeof p.motivos_salida === 'string' ? p.motivos_salida.replace(/[^A-Za-z,]/g, '').slice(0, 120) : '';
+  var desconexiones = clampNumber_(p.desconexiones, 999, 0);
+  var segundosSinConexion = clampNumber_(p.segundos_sin_conexion, 86400, 1);
 
   var lock = LockService.getScriptLock();
   try {
@@ -284,6 +289,10 @@ function submit_(p) {
       if (motivos.length > String(rows[sameSend][H.motivos_salida] || '').length) {
         sheet.getRange(sameSend + 1, H.motivos_salida + 1).setValue(motivos);
       }
+      [['desconexiones', desconexiones], ['segundos_sin_conexion', segundosSinConexion]].forEach(function (c) {
+        if (H[c[0]] === undefined) return;
+        sheet.getRange(sameSend + 1, H[c[0]] + 1).setValue(Math.max(Number(rows[sameSend][H[c[0]]]) || 0, c[1]));
+      });
     } else {
       // En hojas anteriores (sin columna de apellidos) el nombre se guarda como "Apellidos, Nombre".
       var fullName = hasApellidos || !apellidos ? nombre : apellidos + ', ' + nombre;
@@ -304,7 +313,7 @@ function submit_(p) {
         aciertos: result.aciertos, errores: result.errores, blancos: result.blancos, nota: result.nota,
         duracion_min: duracion, posible_duplicado: duplicado, respuestas_json: JSON.stringify(answers),
         salidas: salidas, segundos_fuera: segundosFuera, tipo_envio: tipoEnvio, envio_id: envioId,
-        motivos_salida: motivos,
+        motivos_salida: motivos, desconexiones: desconexiones, segundos_sin_conexion: segundosSinConexion,
         puntos_test: result.puntosTest, puntos_total: result.puntosTotal, pegados: pegados,
         pendientes: result.abiertas // preguntas abiertas sin corregir; la nota es la del test hasta que se corrija
       };
@@ -410,8 +419,9 @@ function createExam_(p) {
       toBool_(p.pantalla_completa),
       resultsSheet.getSheetId(),
       false, // revisión: la publica el profesor desde el panel cuando todos han hecho el examen
-      cleanInstructions_(p.instrucciones)
-    ], [1, 3, 5, 15, 19]);
+      cleanInstructions_(p.instrucciones),
+      storedGift_(p.gift)
+    ], [1, 3, 5, 15, 19, 20]);
     formatExamsSheet_(getExamsSheet_()); // también embellece la hoja de quien ya la tenía
     storeImages_(id, images);
   } finally {
@@ -546,6 +556,16 @@ function listExams_(params) {
   return { ok: true, exams: exams };
 }
 
+// Preguntas completas de un examen, con sus soluciones, para que el panel las descargue como GIFT. Exige el token.
+function exportExam_(p) {
+  var auth = checkToken_(p.token);
+  if (auth) return auth;
+  var exam = findExam_(p.examId);
+  if (!exam) return fail_('not_found', 'Este examen no existe.');
+  // El GIFT original, tal como se publicó (vacío en los exámenes anteriores: el panel lo genera de las preguntas).
+  return { ok: true, titulo: exam.titulo, instrucciones: exam.instrucciones, gift: exam.gift.trim() ? exam.gift : '', preguntas: JSON.parse(exam.preguntas_json) };
+}
+
 // Datos para la pantalla de corrección del panel: una fila por envío, con las respuestas abiertas y sus puntos.
 function results_(p) {
   var auth = checkToken_(p.token);
@@ -588,6 +608,8 @@ function results_(p) {
       aciertos: get('aciertos'), errores: get('errores'), blancos: get('blancos'),
       salidas: Number(get('salidas')) || 0,
       segundos_fuera: Number(get('segundos_fuera')) || 0,
+      desconexiones: Number(get('desconexiones')) || 0,
+      segundos_sin_conexion: Number(get('segundos_sin_conexion')) || 0,
       pegados: Number(get('pegados')) || 0,
       fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
       nota: finalGrade_(exam, openQs, questions, r, H),
@@ -891,6 +913,14 @@ function checkCode_(exam, code) {
   var given = String(code === undefined || code === null ? '' : code).trim();
   if (given === '') return 'code_required';
   return given.toLowerCase() === exam.codigo_acceso.toLowerCase() ? null : 'bad_code';
+}
+
+// Texto GIFT original del examen, para poder exportarlo tal cual. Si no cabe en una celda se guarda vacío
+// (al exportar se genera de las preguntas). Un salto de línea delante evita que Sheets lo tome por una fórmula.
+function storedGift_(text) {
+  if (typeof text !== 'string' || !text.trim() || text.length > MAX_CHARS) return '';
+  var t = text.replace(/\r\n?/g, '\n');
+  return /^[=+\-@]/.test(t) ? '\n' + t : t;
 }
 
 // Instrucciones del examen: se conservan los saltos de línea; como mucho MAX_INSTRUCTIONS caracteres.
@@ -1258,7 +1288,7 @@ function newResultLayout_(questions) {
   var open = (questions || []).filter(isOpen_);
   var visible = ['apellidos', 'nombre', 'grupo', 'nota'];
   if (open.length) visible.push('pendientes');
-  visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
+  visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'desconexiones', 'segundos_sin_conexion', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
   var hidden = ['puntos_test', 'puntos_total'];
   open.forEach(function (q) {
     var c = openColumns_(q, questions);
@@ -1307,6 +1337,8 @@ function formatResultsSheet_(sh, layout) {
       rule('pendientes', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('salidas', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c').setBold(true); }),
       rule('segundos_fuera', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c'); }),
+      rule('desconexiones', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
+      rule('segundos_sin_conexion', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00'); }),
       rule('pegados', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('posible_duplicado', function (r) { return r.whenFormulaSatisfied('=$' + String.fromCharCode(64 + layout.headers.indexOf('posible_duplicado') + 1) + '2=TRUE').setBackground('#fff1c9').setFontColor('#8a5a00'); })
     ].filter(Boolean);
@@ -1327,7 +1359,7 @@ function openColumns_(q, questions) {
 
 // Cabeceras de las columnas añadidas a una hoja de resultados, según las preguntas del examen.
 function resultHeaders_(questions) {
-  var cols = RESULT_POINTS.slice();
+  var cols = RESULT_POINTS.concat(RESULT_CONNECTION);
   var open = (questions || []).filter(isOpen_);
   open.forEach(function (q) {
     var c = openColumns_(q, questions);
@@ -1371,6 +1403,7 @@ function formatExamsSheet_(sh) {
     sh.setColumnWidth(col('revision'), 90);
     sh.setColumnWidth(col('instrucciones'), 260);
     sh.hideColumns(col('preguntas_json'), 1);
+    sh.hideColumns(col('gift'), 1);
     sh.hideColumns(col('hoja_id'), 1);
   } catch (err) {
     console.error(err);
@@ -1485,7 +1518,8 @@ function readExams_() {
       pantalla_completa: toBool_(r[15]),
       hoja_id: r[16] === '' || r[16] === undefined ? '' : String(r[16]),
       revision: toBool_(r[17]),
-      instrucciones: r[18] === undefined ? '' : String(r[18])
+      instrucciones: r[18] === undefined ? '' : String(r[18]),
+      gift: r[19] === undefined ? '' : String(r[19])
     });
   }
   return out;

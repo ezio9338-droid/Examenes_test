@@ -255,7 +255,7 @@ test("hojas de resultados antiguas reciben las columnas nuevas por nombre", () =
   sheet.rows = [["fecha", "nombre", "grupo", "aciertos", "errores", "blancos", "nota", "duracion_min", "posible_duplicado", "respuestas_json"]];
   assert.equal(env.post({ action: "submit", examId: id, nombre: "Ana", apellidos: "López", grupo: "B", respuestas: {}, envioId: "x1" }).ok, true);
   const h = sheet.rows[0];
-  assert.deepEqual(plain(h.slice(10)), ["salidas", "segundos_fuera", "tipo_envio", "envio_id", "motivos_salida", "puntos_test", "puntos_total", "pegados"]);
+  assert.deepEqual(plain(h.slice(10)), ["salidas", "segundos_fuera", "tipo_envio", "envio_id", "motivos_salida", "puntos_test", "puntos_total", "pegados", "desconexiones", "segundos_sin_conexion"]);
   assert.ok(!h.includes("apellidos"), "no se inserta una columna en medio de una hoja ya en uso");
   assert.equal(cell(sheet.rows, 1, "nombre"), "López, Ana", "en hojas anteriores el nombre se guarda como Apellidos, Nombre");
 });
@@ -473,7 +473,7 @@ test("las hojas anteriores (sin apellidos) siguen funcionando y no se reordenan"
   submitAs(env, id, "Pedro", "Álvarez");
   const rows = sheet.rows;
   assert.deepEqual([cell(rows, 1, "nombre"), cell(rows, 2, "nombre")], ["Zapata, Marta", "Álvarez, Pedro"], "orden de llegada");
-  assert.equal(rows[0].length, 18, "solo se añaden columnas al final (puntos_test, puntos_total, pegados)");
+  assert.equal(rows[0].length, 20, "solo se añaden columnas al final (puntos_test, puntos_total, pegados, desconexiones, segundos_sin_conexion)");
 });
 
 /* ------------------------- imágenes en los enunciados ------------------------- */
@@ -487,7 +487,7 @@ const publishImg = (env, extra = {}) =>
 
 test("version: el panel puede saber qué funciones tiene el script", () => {
   const env = makeEnv();
-  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones"] });
+  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar"] });
 });
 
 test("imágenes: se guardan troceadas, se devuelven al alumno y las preguntas no filtran la solución", () => {
@@ -569,4 +569,20 @@ test("imágenes: las imágenes de un examen no se mezclan con las de otro", () =
   const b = publishImg(env, { imagenes: [{ nombre: "grafica1.png", mime: "image/png", data: fakeB64(500, "B") }, ...imgs("Circuito-2.png")] });
   assert.ok(env.get({ action: "exam", id: a.id }).exam.imagenes["grafica1.png"].endsWith("A".repeat(500)));
   assert.ok(env.get({ action: "exam", id: b.id }).exam.imagenes["grafica1.png"].endsWith("B".repeat(500)));
+});
+
+test("desconexiones: se guardan, no son salidas, y el reenvío del mismo envío conserva el máximo", () => {
+  const env = makeEnv();
+  const id = publish(env);
+  const base = { action: "submit", examId: id, nombre: "Ana", apellidos: "López", grupo: "B", respuestas: {}, envioId: "c1" };
+  assert.equal(env.post({ ...base, desconexiones: 2, segundos_sin_conexion: 37.26, motivos_salida: "offline,offline" }).ok, true);
+  env.post({ ...base, desconexiones: 1, segundos_sin_conexion: 5 }); // un reenvío con datos menores no los reduce
+  const rows = env.results(id).rows;
+  assert.equal(rows.length, 2);
+  assert.deepEqual([cell(rows, 1, "desconexiones"), cell(rows, 1, "segundos_sin_conexion"), cell(rows, 1, "salidas"), cell(rows, 1, "motivos_salida")], [2, 37.3, 0, "offline,offline"]);
+  env.post({ ...base, envioId: "c2", nombre: "Eva", desconexiones: -3, segundos_sin_conexion: "x" });
+  const r2 = env.results(id).rows;
+  assert.deepEqual([cell(r2, 2, "desconexiones"), cell(r2, 2, "segundos_sin_conexion")], [0, 0]);
+  const res = env.post({ action: "results", token: "secreto", examId: id });
+  assert.deepEqual(plain(res.rows.map((r) => r.desconexiones).sort()), [0, 2]);
 });

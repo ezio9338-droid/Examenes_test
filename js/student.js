@@ -282,6 +282,9 @@ function startExam(exam, who) {
   progress.motivos = Array.isArray(progress.motivos) ? progress.motivos : [];
   progress.open = progress.open && typeof progress.open === "object" ? progress.open : {};
   progress.pegados = Number(progress.pegados) || 0;
+  progress.desconexiones = Number(progress.desconexiones) || 0;
+  progress.segundosSinConexion = Number(progress.segundosSinConexion) || 0;
+  progress.offlineSince = progress.offlineSince || null;
   store.set(key, JSON.stringify(progress));
   store.set(lastKey(), JSON.stringify(who));
 
@@ -509,6 +512,8 @@ function renderExam(session) {
 
   // Tiempo total fuera: salidas ya cerradas + la que esté en curso.
   const awaySeconds = () => progress.segundosFuera + (progress.leftAt ? (Date.now() - progress.leftAt) / 1000 : 0);
+  // Tiempo total sin conexión, incluida la desconexión en curso.
+  const offlineSeconds = () => progress.segundosSinConexion + (progress.offlineSince ? (Date.now() - progress.offlineSince) / 1000 : 0);
 
   function buildPayload(motivo) {
     const respuestas = {};
@@ -534,6 +539,8 @@ function renderExam(session) {
       envio: motivo,
       envioId: progress.envioId,
       motivos_salida: progress.motivos.join(","),
+      desconexiones: progress.desconexiones,
+      segundos_sin_conexion: Math.round(offlineSeconds() * 10) / 10,
     };
   }
 
@@ -857,6 +864,26 @@ function renderExam(session) {
     tick();
     if (!sending) timerId = setInterval(tick, 1000);
   }
+
+  // Conexión a internet: solo se registra (cuántas veces se pierde y durante cuánto tiempo, y «offline» entre los
+  // motivos). No cuenta como salida ni oculta el examen: el wifi del centro puede caerse sin culpa del alumno.
+  // navigator.onLine detecta que el dispositivo se queda sin red (wifi apagado, modo avión), no todos los cortes.
+  function connectionChanged() {
+    if (finished) return;
+    if (!navigator.onLine && !progress.offlineSince) {
+      progress.desconexiones += 1;
+      progress.offlineSince = Date.now();
+      progress.motivos.push("offline");
+      save();
+    } else if (navigator.onLine && progress.offlineSince) {
+      progress.segundosSinConexion += (Date.now() - progress.offlineSince) / 1000;
+      progress.offlineSince = null;
+      save();
+    }
+  }
+  window.addEventListener("online", connectionChanged);
+  window.addEventListener("offline", connectionChanged);
+  connectionChanged();
 
   // Si el alumno salió y la página se recargó o se cerró, se suma el tiempo que estuvo fuera.
   // La vigilancia vuelve a empezar desde cero (fase de preparación), así que no se cuenta otra salida.

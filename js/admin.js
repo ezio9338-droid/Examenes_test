@@ -8,7 +8,7 @@ import { collectImageRefs, matchImage, MAX_IMAGES, MAX_TOTAL_IMAGE_CHARS } from 
 import { prepareImage } from "./image-encode.js";
 import { richNodes } from "./rich.js";
 import { caseMatters } from "./short.js";
-import { showCorrection, exportNotes } from "./correction.js";
+import { showCorrection, exportNotes, exportGift } from "./correction.js";
 
 const TOKEN_KEY = "admin_token";
 const WARN_CHARS = 45000;
@@ -213,6 +213,17 @@ function showPanel(initialExams) {
         });
         const copy = h("button", { class: "btn secondary small", type: "button" }, "Copiar enlace");
         copy.addEventListener("click", () => copyText(link, copy));
+        const giftBtn = h("button", { class: "btn secondary small", type: "button" }, "Exportar preguntas (GIFT)");
+        giftBtn.addEventListener("click", async () => {
+          giftBtn.disabled = true;
+          try {
+            const err = await exportGift(token, ex);
+            if (err) alert(err);
+          } catch (e) {
+            alert(errorText(e));
+          }
+          giftBtn.disabled = false;
+        });
         const exportBtn = h("button", { class: "btn secondary small", type: "button" }, "Exportar notas (CSV)");
         exportBtn.addEventListener("click", async () => {
           exportBtn.disabled = true;
@@ -248,6 +259,7 @@ function showPanel(initialExams) {
               ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, ex.n_abiertas ? "Corregir abiertas" : "Revisar respuestas cortas")
               : null,
             exportBtn,
+            giftBtn,
             toggle,
             reviewToggle,
             copy,
@@ -560,6 +572,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
         tiempo_min: Number(tiempo.value) || 0,
         codigo_acceso: codigo.value.trim(),
         instrucciones: instrucciones.value.trim(),
+        gift: gift.value, // el GIFT original, para poder exportarlo tal cual
         barajar_preguntas: barPreg.input.checked,
         barajar_opciones: barOpc.input.checked,
         mostrar_nota: mostrar.input.checked,

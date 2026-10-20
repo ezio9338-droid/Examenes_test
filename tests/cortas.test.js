@@ -173,3 +173,29 @@ test("instrucciones del examen: se guardan limpias y el alumno las recibe con el
   assert.equal(env.get({ action: "exam", id: none.id }).exam.instrucciones, "");
   assert.ok(env.get({ action: "version" }).funciones.includes("instrucciones"));
 });
+
+test("exportExam: con el token devuelve las preguntas con soluciones, que se convierten en el mismo GIFT", async () => {
+  const { toGift } = await import("../js/gift.js");
+  const env = makeEnv();
+  const preguntas = parseGift(GIFT);
+  const r = env.post({ action: "createExam", token: "secreto", titulo: "Química", instrucciones: "Lee bien", preguntas });
+  assert.equal(env.post({ action: "exportExam", token: "mal", examId: r.id }).error, "unauthorized");
+  assert.equal(env.post({ action: "exportExam", token: "secreto", examId: "nada" }).error, "not_found");
+  const res = plain(env.post({ action: "exportExam", token: "secreto", examId: r.id }));
+  assert.deepEqual([res.titulo, res.instrucciones], ["Química", "Lee bien"]);
+  assert.deepEqual(parseGift(toGift(res.preguntas)), preguntas);
+  assert.ok(env.get({ action: "version" }).funciones.includes("exportar"));
+});
+
+test("exportExam: devuelve el GIFT original tal como se publicó; sin él (exámenes anteriores) va vacío", () => {
+  const env = makeEnv();
+  const original = "// mis comentarios\n" + GIFT;
+  const r = env.post({ action: "createExam", token: "secreto", titulo: "Química", gift: original, preguntas: parseGift(original) });
+  assert.equal(env.post({ action: "exportExam", token: "secreto", examId: r.id }).gift, original);
+  const viejo = env.post({ action: "createExam", token: "secreto", titulo: "Viejo", preguntas: parseGift(GIFT) });
+  assert.equal(env.post({ action: "exportExam", token: "secreto", examId: viejo.id }).gift, "");
+  const grande = env.post({ action: "createExam", token: "secreto", titulo: "Grande", gift: "x".repeat(60000), preguntas: parseGift(GIFT) });
+  assert.equal(env.post({ action: "exportExam", token: "secreto", examId: grande.id }).gift, "");
+  const formula = env.post({ action: "createExam", token: "secreto", titulo: "F", gift: "=raro{=a~b}", preguntas: parseGift(GIFT) });
+  assert.equal(env.post({ action: "exportExam", token: "secreto", examId: formula.id }).gift, "\n=raro{=a~b}");
+});
