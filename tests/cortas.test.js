@@ -31,6 +31,23 @@ test("shortAnswerMatches: lo que vale y lo que no", () => {
   assert.equal(shortAnswerMatches(["12"], "12,0"), true);
 });
 
+test("nomenclatura: mayúsculas solo donde importan (romanos, símbolos) y espacios junto a paréntesis", () => {
+  const fe = ["óxido de hierro(III)", "trióxido de dihierro"];
+  for (const g of ["óxido de hierro(III)", "Óxido de hierro(III)", "óxido de hierro (III)", "ÓXIDO DE HIERRO(III)", "Trióxido de dihierro.", "óxido de hierro( III )"]) assert.equal(shortAnswerMatches(fe, g), true, g);
+  for (const g of ["óxido de hierro(iii)", "oxido de hierro(III)", "óxido de hierro(3)", "óxido de hierro III", "trioxido de dihierro", "óxido de hierro(II)"]) assert.equal(shortAnswerMatches(fe, g), false, g);
+  for (const g of ["CaCl2", "CaCl₂", "Ca Cl2"]) assert.equal(shortAnswerMatches(["CaCl2"], g), true, g);
+  for (const g of ["cacl2", "CACL2", "Cacl2", "CaCl"]) assert.equal(shortAnswerMatches(["CaCl2"], g), false, g);
+  assert.equal(caseMatters("óxido de hierro(III)"), true);
+  assert.equal(caseMatters("dicloruro de calcio"), false);
+});
+
+test("Code.gs compara igual que js/short.js", () => {
+  const server = makeEnv().fn("shortAnswerMatches_");
+  const answers = [["NaCl"], ["óxido de hierro(III)", "trióxido de dihierro"], ["cloruro de sodio"], ["0,5"], ["Oxígeno"], ["H2O"], ["pH"]];
+  const given = ["NaCl", "nacl", "Na Cl", "óxido de hierro (III)", "Óxido de hierro(iii)", "TRIÓXIDO DE DIHIERRO", "cloruro de sodio.", "Cloruro de Sodio", "0.5", "oxígeno", "H₂O", "PH", "ph", "", "  "];
+  for (const a of answers) for (const g of given) assert.equal(server(a, g), shortAnswerMatches(a, g), `${a} / ${g}`);
+});
+
 test("GIFT: solo respuestas con = es respuesta corta; con ~ sigue siendo test", () => {
   const qs = parseGift("::C1::[valor=0,5] Fórmula del cloruro de sodio{=NaCl}\n\n::C2::Nombre de NaCl{=cloruro de sodio =cloruro sódico#bien =cloruro de sodio}\n\nT{=a~b}");
   assert.deepEqual(plain(qs.map((q) => [q.tipo, q.respuestas, q.options.length, q.valor])), [
@@ -142,4 +159,17 @@ test("corrección a mano de una respuesta corta: recalcula la nota; null vuelve 
   assert.equal(env.post({ action: "grade", token: "secreto", examId: id, envioId: "e1", qid: "q3", correcta: "sí" }).error, "invalid_grade");
   assert.equal(env.post({ action: "grade", token: "mal", examId: id, envioId: "e1", qid: "q3", correcta: true }).error, "unauthorized");
   assert.equal(env.get({ action: "list", token: "secreto" }).exams[0].n_cortas, 2);
+});
+
+test("instrucciones del examen: se guardan limpias y el alumno las recibe con el examen (tras el código)", () => {
+  const env = makeEnv();
+  const r = env.post({ action: "createExam", token: "secreto", titulo: "Formulación", codigo_acceso: "abc", instrucciones: "  Números romanos en MAYÚSCULAS.\r\n\r\n\r\n\r\nSin espacio antes del paréntesis.  ", preguntas: parseGift("A{=NaCl}") });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(env.get({ action: "exam", id: r.id }).info.instrucciones, undefined, "no antes del código");
+  assert.equal(env.get({ action: "exam", id: r.id, code: "abc" }).exam.instrucciones, "Números romanos en MAYÚSCULAS.\n\nSin espacio antes del paréntesis.");
+  const long = env.post({ action: "createExam", token: "secreto", titulo: "X", instrucciones: "x".repeat(3000), preguntas: parseGift("A{=NaCl}") });
+  assert.equal(env.get({ action: "exam", id: long.id }).exam.instrucciones.length, 2000);
+  const none = env.post({ action: "createExam", token: "secreto", titulo: "Y", preguntas: parseGift("A{=NaCl}") });
+  assert.equal(env.get({ action: "exam", id: none.id }).exam.instrucciones, "");
+  assert.ok(env.get({ action: "version" }).funciones.includes("instrucciones"));
 });

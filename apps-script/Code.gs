@@ -14,7 +14,7 @@ const EXAM_HEADERS = [
   'id', 'titulo', 'grupo_destino', 'activo', 'codigo_acceso', 'tiempo_min',
   'barajar_preguntas', 'barajar_opciones', 'mostrar_nota', 'permitir_negativa',
   'preguntas_json', 'creado', 'control_salidas', 'salidas_permitidas', 'penalizacion',
-  'pantalla_completa', 'hoja_id', 'revision'
+  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones'
 ];
 // Hoja de resultados (una por examen). Orden de las columnas de las hojas nuevas; las hojas de versiones
 // anteriores se leen por el nombre de la cabecera y reciben al final las columnas extra que les falten.
@@ -35,6 +35,7 @@ const MAX_QUESTIONS = 200;
 const MAX_OPTIONS = 26;
 const MAX_VALUE = 100;        // puntos máximos de una pregunta
 const MAX_OPEN_CHARS = 4000;  // longitud máxima de una respuesta abierta
+const MAX_INSTRUCTIONS = 2000; // instrucciones del examen para el alumno
 const MAX_SHORT_CHARS = 200;  // longitud máxima de una respuesta corta (y de cada respuesta aceptada)
 const MAX_SHORT_ANSWERS = 20; // respuestas aceptadas por pregunta de respuesta corta
 
@@ -48,7 +49,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -157,6 +158,7 @@ function getExam_(params) {
       salidas_permitidas: exam.salidas_permitidas,
       penalizacion: exam.penalizacion,
       pantalla_completa: exam.pantalla_completa,
+      instrucciones: exam.instrucciones,
       imagenes: loadImages_(exam.id, questions),
       questions: questions.map(function (q) {
         return {
@@ -407,8 +409,9 @@ function createExam_(p) {
       penalizacion,
       toBool_(p.pantalla_completa),
       resultsSheet.getSheetId(),
-      false // revisión: la publica el profesor desde el panel cuando todos han hecho el examen
-    ], [1, 3, 5, 15]);
+      false, // revisión: la publica el profesor desde el panel cuando todos han hecho el examen
+      cleanInstructions_(p.instrucciones)
+    ], [1, 3, 5, 15, 19]);
     formatExamsSheet_(getExamsSheet_()); // también embellece la hoja de quien ya la tenía
     storeImages_(id, images);
   } finally {
@@ -829,42 +832,41 @@ function gradeExam_(questions, answers, opts) {
 /* Respuesta corta (réplica exacta de js/short.js)                     */
 /* ------------------------------------------------------------------ */
 
-// ¿Importan las mayúsculas? Sí si hay alguna que no sea solo la inicial de una palabra de 3 o más letras
-// (NaCl, CO2, Fe, pH → sí; Oxígeno, Ley de Ohm → no).
-function caseMatters_(answer) {
-  return String(answer === undefined || answer === null ? '' : answer)
-    .normalize('NFKC')
-    .split(/\s+/)
-    .some(function (word) {
-      var letters = word.replace(/[^\p{L}]/gu, '');
-      if (letters === letters.toLowerCase()) return false;
-      var rest = letters.slice(1);
-      return rest !== rest.toLowerCase() || letters.length < 3;
-    });
+var SHORT_RUNS_ = /\p{L}+|[^\p{L}]+/gu; // tramos de letras y de lo demás: "hierro(III)" → hierro, (, III, )
+
+// ¿Cuentan las mayúsculas en este tramo de letras? Sí si lleva alguna que no sea solo la inicial de un
+// tramo de 3 o más letras: NaCl, Fe, O, III, pH → sí; óxido, Óxido, Ohm → no.
+function runMatters_(run) {
+  if (run === run.toLowerCase()) return false;
+  var rest = run.slice(1);
+  return rest !== rest.toLowerCase() || run.length < 3;
 }
 
-// Forma comparable: sin espacios de más ni punto final; subíndices (H₂O) como dígitos normales.
-// Las tildes cuentan: la ortografía se tiene en cuenta.
-function shortKey_(text, keepCase) {
-  var t = String(text === undefined || text === null ? '' : text)
+// Forma comparable: sin espacios de más, sin espacios junto a los paréntesis ni punto final;
+// subíndices (H₂O) como dígitos normales. Las tildes cuentan: la ortografía se tiene en cuenta.
+function shortKey_(text) {
+  return String(text === undefined || text === null ? '' : text)
     .normalize('NFKC')
     .replace(/\s+/g, ' ')
+    .replace(/\s*\(\s*/g, '(')
+    .replace(/\s*\)/g, ')')
     .trim()
     .replace(/\.+$/, '')
     .trim();
-  return keepCase ? t : t.toLowerCase();
 }
 
 function shortAnswerMatches_(accepted, given) {
   var number = /^[+-]?\d+(?:[.,]\d+)?$/;
   return (accepted || []).some(function (answer) {
-    var keep = caseMatters_(answer);
-    var a = shortKey_(answer, keep);
-    var b = shortKey_(given, keep);
+    var a = shortKey_(answer);
+    var b = shortKey_(given);
     if (!a) return false;
     if (a.indexOf(' ') === -1) b = b.replace(/ /g, ''); // "Na Cl" vale por "NaCl"
     if (number.test(a) && number.test(b)) return Number(a.replace(',', '.')) === Number(b.replace(',', '.'));
-    return a === b;
+    if (a.toLowerCase() !== b.toLowerCase()) return false;
+    var ra = a.match(SHORT_RUNS_);
+    var rb = b.match(SHORT_RUNS_);
+    return ra.length === rb.length && ra.every(function (run, k) { return !runMatters_(run) || run === rb[k]; });
   });
 }
 
@@ -889,6 +891,12 @@ function checkCode_(exam, code) {
   var given = String(code === undefined || code === null ? '' : code).trim();
   if (given === '') return 'code_required';
   return given.toLowerCase() === exam.codigo_acceso.toLowerCase() ? null : 'bad_code';
+}
+
+// Instrucciones del examen: se conservan los saltos de línea; como mucho MAX_INSTRUCTIONS caracteres.
+function cleanInstructions_(s) {
+  return String(s === undefined || s === null ? '' : s).replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n').trim().slice(0, MAX_INSTRUCTIONS);
 }
 
 function cleanText_(s) {
@@ -1361,6 +1369,7 @@ function formatExamsSheet_(sh) {
     sh.setColumnWidth(col('codigo_acceso'), 100);
     sh.setColumnWidth(col('creado'), 140);
     sh.setColumnWidth(col('revision'), 90);
+    sh.setColumnWidth(col('instrucciones'), 260);
     sh.hideColumns(col('preguntas_json'), 1);
     sh.hideColumns(col('hoja_id'), 1);
   } catch (err) {
@@ -1375,6 +1384,7 @@ function formatExamsSheet_(sh) {
       .setBorder(true, true, true, true, true, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
     sh.getRange(2, col('activo'), rowsMax - 1, n - col('activo') + 1).setHorizontalAlignment('center');
     sh.getRange(2, col('titulo'), rowsMax - 1, 1).setFontWeight('bold');
+    sh.getRange(2, col('instrucciones'), rowsMax - 1, 1).setHorizontalAlignment('left').setWrap(true);
     sh.getRange(2, col('creado'), rowsMax - 1, 1).setNumberFormat('dd/mm/yyyy hh:mm');
     // «activo» y «revision»: VERDADERO en verde y FALSO en rojo.
     var rules = [];
@@ -1474,7 +1484,8 @@ function readExams_() {
       penalizacion: storedPenalty_(r[14]),
       pantalla_completa: toBool_(r[15]),
       hoja_id: r[16] === '' || r[16] === undefined ? '' : String(r[16]),
-      revision: toBool_(r[17])
+      revision: toBool_(r[17]),
+      instrucciones: r[18] === undefined ? '' : String(r[18])
     });
   }
   return out;
