@@ -130,6 +130,13 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
     );
   }
 
+  // Con «Mostrar solo…» marcado, la tarjeta que deja de cumplir el filtro al corregirla se quita de la lista.
+  function dropIfHidden(card, hidden) {
+    if (!onlyPending || !hidden) return;
+    card.remove();
+    if (!body.querySelector(".answer-card")) renderBody();
+  }
+
   function renderBody() {
     if (isShort(current)) return renderShortBody();
     const inputs = [];
@@ -187,6 +194,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
         paint(`Guardado ✓ · nota del alumno: ${fmt(r.nota)}`);
         renderTabs();
         renderProgress();
+        dropIfHidden(card, shortOk(a));
       } catch {
         status.textContent = "Sin conexión: no se ha guardado.";
         status.className = "save-state small bad";
@@ -242,6 +250,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
         status.className = "save-state small ok";
         renderTabs();
         renderProgress();
+        dropIfHidden(card, out.puntos !== null);
       } catch {
         status.textContent = "Sin conexión: no se ha guardado.";
         status.className = "save-state small bad";
@@ -264,8 +273,10 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
       if (e.key !== "Enter") return;
       e.preventDefault();
       commit();
-      inputs[idx + 1]?.focus();
-      inputs[idx + 1]?.select();
+      // La siguiente que siga en la lista (con el filtro activo, las ya corregidas se han quitado).
+      const next = inputs.slice(idx + 1).find((i) => i.isConnected);
+      next?.focus();
+      next?.select();
     });
     const quick = (label, value) => h("button", { type: "button", class: "btn secondary small", onclick: () => { input.value = value; commit(); } }, label);
 
