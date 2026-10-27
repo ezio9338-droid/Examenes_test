@@ -130,11 +130,19 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
     );
   }
 
-  // Con «Mostrar solo…» marcado, la tarjeta que deja de cumplir el filtro al corregirla se quita de la lista.
+  // Con «Mostrar solo…» marcado, la tarjeta que deja de cumplir el filtro al corregirla se quita de la lista,
+  // tras una pausa para que se vea «Guardado ✓». hidden() se vuelve a mirar entonces por si se ha cambiado.
   function dropIfHidden(card, hidden) {
-    if (!onlyPending || !hidden) return;
-    card.remove();
-    if (!body.querySelector(".answer-card")) renderBody();
+    if (!onlyPending || !hidden()) return;
+    setTimeout(() => {
+      if (!onlyPending || !hidden() || !card.isConnected) return;
+      card.classList.add("leaving");
+      setTimeout(() => {
+        if (!onlyPending || !hidden() || !card.isConnected) return card.classList.remove("leaving");
+        card.remove();
+        if (!body.querySelector(".answer-card")) renderBody();
+      }, 300);
+    }, 1200);
   }
 
   function renderBody() {
@@ -194,7 +202,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
         paint(`Guardado ✓ · nota del alumno: ${fmt(r.nota)}`);
         renderTabs();
         renderProgress();
-        dropIfHidden(card, shortOk(a));
+        dropIfHidden(card, () => shortOk(a));
       } catch {
         status.textContent = "Sin conexión: no se ha guardado.";
         status.className = "save-state small bad";
@@ -250,7 +258,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
         status.className = "save-state small ok";
         renderTabs();
         renderProgress();
-        dropIfHidden(card, out.puntos !== null);
+        dropIfHidden(card, () => a.puntos !== null);
       } catch {
         status.textContent = "Sin conexión: no se ha guardado.";
         status.className = "save-state small bad";
