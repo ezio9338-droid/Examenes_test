@@ -46,8 +46,8 @@ test("todo o nada: solo es acierto si todos los cuadros están bien; en blanco s
   assert.equal(shortIsBlank(f1, null), true);
 
   const qs = parseGift(GIFT);
-  const r = gradeExam(qs, { q1: ["trióxido de dihierro", "óxido de hierro(III)"], q2: "ácido nitrico", q3: ["SO3", null] });
-  // F01 bien (1), F02 mal (tilde), F03 mal (un cuadro vacío): 1 de 4 puntos
+  const r = gradeExam(qs, { q1: ["trióxido de dihierro", "óxido de hierro(III)"], q2: "ácido nitroso", q3: ["SO3", null] });
+  // F01 bien (1), F02 mal (otro ácido), F03 mal (un cuadro vacío): 1 de 4 puntos
   assert.deepEqual([r.aciertos, r.errores, r.blancos, r.puntos, r.nota], [1, 2, 0, 1, 2.5]);
   assert.equal(gradeExam(qs, { q1: ["", ""], q3: null }).blancos, 3);
   assert.equal(gradeExam(qs, { q3: ["SO3", "x"] }, { shortOverrides: { q3: true } }).puntos, 2, "corrección a mano de la pregunta entera");

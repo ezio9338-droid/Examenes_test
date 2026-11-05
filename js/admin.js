@@ -46,9 +46,9 @@ function errorText(e) {
 // Para la vista previa: si en las respuestas aceptadas cuentan las mayúsculas (fórmulas como NaCl) o no.
 function caseNote(answers) {
   const strict = answers.filter(caseMatters);
-  if (!strict.length) return " (dan igual las mayúsculas; las tildes cuentan)";
-  if (strict.length === answers.length) return " (cuentan las mayúsculas de símbolos, fórmulas y números romanos, y las tildes)";
-  return ` (cuentan las tildes, y las mayúsculas en ${strict.join(", ")})`;
+  if (!strict.length) return " (dan igual las tildes y las mayúsculas)";
+  if (strict.length === answers.length) return " (cuentan las mayúsculas de los símbolos; las tildes no)";
+  return ` (dan igual las tildes; las mayúsculas de los símbolos cuentan en ${strict.join(", ")})`;
 }
 
 const MAX_INSTRUCTIONS = 2000;
