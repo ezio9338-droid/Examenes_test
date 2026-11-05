@@ -8,19 +8,26 @@ export const MAX_SHORT_ANSWERS = 20; // respuestas aceptadas por pregunta
 const NUMBER = /^[+-]?\d+(?:[.,]\d+)?$/;
 const RUNS = /\p{L}+|[^\p{L}]+/gu; // tramos de letras y de lo demás: "hierro(III)" → hierro, (, III, )
 
-// ¿Cuentan las mayúsculas en este tramo de letras? Sí si lleva alguna que no sea solo la inicial de un
-// tramo de 3 o más letras: NaCl, Fe, O, III, pH → sí; óxido, Óxido, Ohm → no.
-function runMatters(run) {
+const ROMAN = /^[ivxlcdm]+$/i;
+
+// ¿Cuentan las mayúsculas en este tramo de letras? Solo en los símbolos de las fórmulas: sí si lleva alguna
+// mayúscula que no sea solo la inicial de un tramo de 3 o más letras (NaCl, Fe, O → sí; óxido, Óxido → no).
+// Un número romano entre paréntesis (hierro(III)) no es un símbolo: da igual en mayúsculas o minúsculas.
+function runMatters(run, prev = "", next = "") {
   if (run === run.toLowerCase()) return false;
+  if (ROMAN.test(run) && prev.endsWith("(") && next.startsWith(")")) return false;
   const rest = run.slice(1);
   return rest !== rest.toLowerCase() || run.length < 3;
 }
 
-// Forma comparable: sin espacios de más, sin espacios junto a los paréntesis ni punto final;
-// subíndices (H₂O) como dígitos normales. Las tildes cuentan: la ortografía se tiene en cuenta.
+// Forma comparable: sin tildes, sin espacios de más, sin espacios junto a los paréntesis ni punto final;
+// subíndices (H₂O) como dígitos normales.
 function shortKey(text) {
   return String(text ?? "")
     .normalize("NFKC")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFC")
     .replace(/\s+/g, " ")
     .replace(/\s*\(\s*/g, "(")
     .replace(/\s*\)/g, ")")
@@ -29,15 +36,19 @@ function shortKey(text) {
     .trim();
 }
 
-/** ¿Cuentan las mayúsculas en alguna parte de esta respuesta? (NaCl, CO2, hierro(III) → sí; Oxígeno → no) */
+// ¿Cuentan las mayúsculas en el tramo i de una lista de tramos?
+const runMattersAt = (runs, i) => runMatters(runs[i], runs[i - 1], runs[i + 1]);
+
+/** ¿Cuentan las mayúsculas en alguna parte de esta respuesta? (NaCl, CO2 → sí; Oxígeno, hierro(III) → no) */
 export function caseMatters(answer) {
-  return (shortKey(answer).match(RUNS) ?? []).some(runMatters);
+  const runs = shortKey(answer).match(RUNS) ?? [];
+  return runs.some((_, i) => runMattersAt(runs, i));
 }
 
 /**
- * ¿Coincide lo que ha escrito el alumno con alguna de las respuestas aceptadas? Las mayúsculas solo cuentan
- * en los tramos en que importan (símbolos, fórmulas, números romanos): «Óxido de hierro(III)» vale por
- * «óxido de hierro(III)», pero no «óxido de hierro(iii)».
+ * ¿Coincide lo que ha escrito el alumno con alguna de las respuestas aceptadas? Las tildes no cuentan, y las
+ * mayúsculas solo en los símbolos de las fórmulas: «oxido de hierro(iii)» vale por «óxido de hierro(III)», pero
+ * «Co» no vale por «CO».
  */
 export function shortAnswerMatches(accepted, given) {
   return (accepted || []).some((answer) => {
@@ -49,7 +60,7 @@ export function shortAnswerMatches(accepted, given) {
     if (a.toLowerCase() !== b.toLowerCase()) return false;
     const ra = a.match(RUNS);
     const rb = b.match(RUNS);
-    return ra.length === rb.length && ra.every((run, i) => !runMatters(run) || run === rb[i]);
+    return ra.length === rb.length && ra.every((run, i) => !runMattersAt(ra, i) || run === rb[i]);
   });
 }
 

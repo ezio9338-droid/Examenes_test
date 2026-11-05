@@ -889,19 +889,25 @@ function gradeExam_(questions, answers, opts) {
 
 var SHORT_RUNS_ = /\p{L}+|[^\p{L}]+/gu; // tramos de letras y de lo demás: "hierro(III)" → hierro, (, III, )
 
-// ¿Cuentan las mayúsculas en este tramo de letras? Sí si lleva alguna que no sea solo la inicial de un
-// tramo de 3 o más letras: NaCl, Fe, O, III, pH → sí; óxido, Óxido, Ohm → no.
-function runMatters_(run) {
+var SHORT_ROMAN_ = /^[ivxlcdm]+$/i;
+
+// ¿Cuentan las mayúsculas en este tramo de letras? Solo en los símbolos de las fórmulas (NaCl, Fe, O → sí;
+// óxido, Óxido → no). Un número romano entre paréntesis (hierro(III)) da igual en mayúsculas o minúsculas.
+function runMatters_(run, prev, next) {
   if (run === run.toLowerCase()) return false;
+  if (SHORT_ROMAN_.test(run) && String(prev || '').slice(-1) === '(' && String(next || '').charAt(0) === ')') return false;
   var rest = run.slice(1);
   return rest !== rest.toLowerCase() || run.length < 3;
 }
 
-// Forma comparable: sin espacios de más, sin espacios junto a los paréntesis ni punto final;
-// subíndices (H₂O) como dígitos normales. Las tildes cuentan: la ortografía se tiene en cuenta.
+// Forma comparable: sin tildes, sin espacios de más, sin espacios junto a los paréntesis ni punto final;
+// subíndices (H₂O) como dígitos normales.
 function shortKey_(text) {
   return String(text === undefined || text === null ? '' : text)
     .normalize('NFKC')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
     .replace(/\s+/g, ' ')
     .replace(/\s*\(\s*/g, '(')
     .replace(/\s*\)/g, ')')
@@ -921,7 +927,7 @@ function shortAnswerMatches_(accepted, given) {
     if (a.toLowerCase() !== b.toLowerCase()) return false;
     var ra = a.match(SHORT_RUNS_);
     var rb = b.match(SHORT_RUNS_);
-    return ra.length === rb.length && ra.every(function (run, k) { return !runMatters_(run) || run === rb[k]; });
+    return ra.length === rb.length && ra.every(function (run, k) { return !runMatters_(run, ra[k - 1], ra[k + 1]) || run === rb[k]; });
   });
 }
 

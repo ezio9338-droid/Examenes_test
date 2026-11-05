@@ -127,8 +127,8 @@ Escribe las preguntas en un archivo de texto con este formato (la respuesta corr
 
 Cómo se compara (para que no haga falta prever cada variante):
 
-- **La ortografía cuenta, tildes incluidas**: «cloruro sodico» no vale por `cloruro sódico`. Al alumno se le avisa en la pantalla inicial y debajo de cada cuadro. Lo que no cuenta son los espacios de más ni un punto final: «Cloruro sódico.» vale. Si la respuesta no tiene espacios, tampoco cuentan los del alumno: «Na Cl» vale por `NaCl`.
-- **Mayúsculas:** se miran por partes. En las palabras normales escritas en minúsculas, o con solo la inicial en mayúscula (`óxido`, `Oxígeno`, `Ley de Ohm`), dan igual. En los símbolos, fórmulas y números romanos (`NaCl`, `CO2`, `H2O`, `Fe`, `pH`, `(III)`) **tienen que coincidir**: «nacl» es incorrecto, «Co» (cobalto) no vale por `CO` y «óxido de hierro(iii)» no vale por `óxido de hierro(III)`; en cambio «Óxido de hierro(III)» sí vale. La vista previa del panel te dice, en cada pregunta, dónde cuentan las mayúsculas.
+- **Las tildes no cuentan**: «oxido de hierro(III)» vale por `óxido de hierro(III)` (tampoco la eñe: «estano» vale por `estaño`). **Las demás letras sí**: «sulfito» no vale por `sulfato`, porque es otro compuesto. Tampoco cuentan los espacios de más ni un punto final: «Cloruro sódico.» vale. Si la respuesta no tiene espacios, tampoco cuentan los del alumno: «Na Cl» vale por `NaCl`. Al alumno se le avisa en la pantalla inicial y debajo de cada cuadro.
+- **Mayúsculas: solo cuentan en los símbolos de las fórmulas.** En los nombres dan igual, números romanos incluidos: «OXIDO DE HIERRO(iii)» vale por `óxido de hierro(III)`. En las fórmulas (`NaCl`, `CO2`, `H2O`, `Fe(OH)3`) **tienen que coincidir**: «nacl» es incorrecto y «Co» (cobalto) no vale por `CO`. La vista previa del panel te dice, en cada pregunta, dónde cuentan las mayúsculas.
 - Da igual dejar o no un espacio junto a los paréntesis: «hierro (III)» vale por `hierro(III)`.
 - Los subíndices cuentan como números normales (`H₂O` = `H2O`) y en los números da igual la coma o el punto (`0,5` = `0.5`).
 - Para escribir `=`, `~`, `#`, `{` o `}` dentro de una respuesta aceptada, ponle delante una barra invertida (`v\=d/t`).
@@ -152,7 +152,7 @@ Tradicional: {=ácido nítrico}
 
 - Cada pregunta puede tener los cuadros que necesite (hasta 10): la del ácido, solo uno.
 - Se corrige **todo o nada**: la pregunta cuenta como bien solo si **todos** sus cuadros están bien. Si deja alguno vacío o lo falla, es un error (que no resta). Si no rellena ninguno, queda en blanco.
-- Cada cuadro admite varias respuestas válidas (`{=monóxido de disodio =óxido de disodio}`) y se compara como cualquier respuesta corta (ortografía, mayúsculas en fórmulas y números romanos…).
+- Cada cuadro admite varias respuestas válidas (`{=monóxido de disodio =óxido de disodio}`) y se compara como cualquier respuesta corta (sin tildes; mayúsculas solo en los símbolos de las fórmulas).
 - Varios cuadros pueden ir en la misma línea: `Fórmula: {=SO3} Stock: {=óxido de azufre(VI)}`.
 - Al enviar, una pregunta con algún cuadro vacío sale en la lista de «En blanco», para que el alumno la revise.
 - En «Revisar respuestas cortas» ves lo que escribió en cada cuadro y puedes marcar la pregunta entera como correcta o incorrecta. En la revisión del alumno, cada cuadro aparece con su etiqueta y, si falló, su respuesta correcta.
@@ -207,7 +207,7 @@ REGLAS DEL FORMATO (obligatorias):
 6. PUNTOS: la marca [valor=N] va al PRINCIPIO del enunciado, justo después del título ::Pxx::. N es un número mayor que 0 (usa punto o coma decimal: 1, 2, 0.5). Si una pregunta vale 1 punto puedes omitirla.
 7. PREGUNTAS ABIERTAS (respuesta escrita por el alumno): llaves VACÍAS, sin opciones. Ejemplo:
    ::A01::[valor=3] Explica con tus palabras qué es el método científico.{}
-   PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y con su ortografía correcta (tildes incluidas), y las fórmulas con sus mayúsculas exactas. Ejemplos:
+   PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y con su ortografía correcta, y las fórmulas con sus mayúsculas exactas (el programa no tiene en cuenta las tildes ni las mayúsculas de los nombres). Ejemplos:
    ::C01::Escribe la fórmula del cloruro de sodio.{=NaCl}
    ::C02::¿Cómo se llama el compuesto NaCl?{=cloruro de sodio =cloruro sódico}
    Si una pregunta pide VARIAS respuestas cortas (por ejemplo, dos nomenclaturas), pon un bloque {=…} por cuadro, cada uno en su línea detrás de su etiqueta. La pregunta solo cuenta como bien si todos los cuadros lo están:

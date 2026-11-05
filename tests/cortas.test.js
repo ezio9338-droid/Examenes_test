@@ -21,23 +21,30 @@ test("shortAnswerMatches: lo que vale y lo que no", () => {
   assert.equal(shortAnswerMatches(["CO"], "Co"), false, "monóxido de carbono no es cobalto");
   const palabra = ["cloruro de sodio", "cloruro sódico"];
   for (const g of ["Cloruro de sodio", "CLORURO  DE SODIO", "Cloruro Sódico."]) assert.equal(shortAnswerMatches(palabra, g), true, g);
-  // la ortografía cuenta, tildes incluidas
-  for (const g of ["cloruro sodico", "clorurodesodio", "cloruro de sodo"]) assert.equal(shortAnswerMatches(palabra, g), false, g);
+  // las tildes no cuentan; las demás letras, sí
+  assert.equal(shortAnswerMatches(palabra, "cloruro sodico"), true);
+  for (const g of ["clorurodesodio", "cloruro de sodo"]) assert.equal(shortAnswerMatches(palabra, g), false, g);
   assert.equal(shortAnswerMatches(["Oxígeno"], "oxígeno"), true);
-  assert.equal(shortAnswerMatches(["Oxígeno"], "oxigeno"), false);
+  assert.equal(shortAnswerMatches(["Oxígeno"], "oxigeno"), true);
+  assert.equal(shortAnswerMatches(["sulfato de sodio"], "sulfito de sodio"), false, "una letra cambia el compuesto");
+  assert.equal(shortAnswerMatches(["hidróxido de estaño(IV)"], "hidroxido de estano(iv)"), true, "ni tildes ni eñes");
   assert.equal(shortAnswerMatches(["oxígeno"], "oxi\u0301geno"), true, "tilde compuesta o precompuesta");
   assert.equal(shortAnswerMatches(["0,5"], "0.5"), true);
   assert.equal(shortAnswerMatches(["0,5"], ".5"), false);
   assert.equal(shortAnswerMatches(["12"], "12,0"), true);
 });
 
-test("nomenclatura: mayúsculas solo donde importan (romanos, símbolos) y espacios junto a paréntesis", () => {
+test("nomenclatura: mayúsculas solo en los símbolos de las fórmulas, sin tildes, y espacios junto a paréntesis", () => {
   const fe = ["óxido de hierro(III)", "trióxido de dihierro"];
-  for (const g of ["óxido de hierro(III)", "Óxido de hierro(III)", "óxido de hierro (III)", "ÓXIDO DE HIERRO(III)", "Trióxido de dihierro.", "óxido de hierro( III )"]) assert.equal(shortAnswerMatches(fe, g), true, g);
-  for (const g of ["óxido de hierro(iii)", "oxido de hierro(III)", "óxido de hierro(3)", "óxido de hierro III", "trioxido de dihierro", "óxido de hierro(II)"]) assert.equal(shortAnswerMatches(fe, g), false, g);
+  for (const g of ["óxido de hierro(III)", "Óxido de hierro(III)", "óxido de hierro (III)", "ÓXIDO DE HIERRO(III)", "Trióxido de dihierro.", "óxido de hierro( III )",
+    "óxido de hierro(iii)", "oxido de hierro(III)", "OXIDO DE HIERRO(iii)", "trioxido de dihierro"]) assert.equal(shortAnswerMatches(fe, g), true, g);
+  for (const g of ["óxido de hierro(3)", "óxido de hierro III", "óxido de hierro(II)", "óxido de hierro(ii)"]) assert.equal(shortAnswerMatches(fe, g), false, g);
+  // en las fórmulas, un símbolo de una letra entre paréntesis no es un número romano
+  assert.equal(shortAnswerMatches(["Ca(OH)2"], "Ca(oh)2"), false);
   for (const g of ["CaCl2", "CaCl₂", "Ca Cl2"]) assert.equal(shortAnswerMatches(["CaCl2"], g), true, g);
   for (const g of ["cacl2", "CACL2", "Cacl2", "CaCl"]) assert.equal(shortAnswerMatches(["CaCl2"], g), false, g);
-  assert.equal(caseMatters("óxido de hierro(III)"), true);
+  assert.equal(caseMatters("óxido de hierro(III)"), false);
+  assert.equal(caseMatters("Fe(OH)3"), true);
   assert.equal(caseMatters("dicloruro de calcio"), false);
 });
 

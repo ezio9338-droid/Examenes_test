@@ -160,7 +160,7 @@ function scoringText(questions, penalizacion, nShorts = 0) {
     ...(shortCount
       ? [
           `${shortCount === 1 ? "Hay una pregunta" : `Hay ${shortCount} preguntas`} de respuesta corta: escribes una palabra, un número o una fórmula${penalty ? ", y si fallas no resta" : ""}.`,
-          { strong: "En las preguntas de respuesta corta se tiene en cuenta la ortografía, tildes incluidas: una palabra mal escrita cuenta como incorrecta. En las fórmulas, cuidado también con las mayúsculas (NaCl, CO2)." },
+          { strong: "En las preguntas de respuesta corta no cuentan las tildes ni las mayúsculas, salvo en los símbolos de las fórmulas: Co (cobalto) no es lo mismo que CO. Las demás letras sí cuentan: una palabra mal escrita es incorrecta." },
         ]
       : []),
     ...(opens.length
@@ -459,7 +459,7 @@ function renderExam(session) {
         input.blur();
       }
     });
-    const hint = h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes).");
+    const hint = h("small", { class: "hint" }, "Las tildes no cuentan; en las fórmulas, sí las mayúsculas de los símbolos.");
     if (label) return h("div", { class: "open-box" }, h("div", { class: "blank-row" }, h("span", { class: "blank-label" }, `${label}:`), input), hint);
     return h("div", { class: "open-box" }, input, hint);
   }
@@ -507,7 +507,7 @@ function renderExam(session) {
       });
       return input;
     }
-    return h("div", { class: "open-box" }, ...rows, h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes). La pregunta solo cuenta como bien si todos sus cuadros lo están."));
+    return h("div", { class: "open-box" }, ...rows, h("small", { class: "hint" }, "Las tildes no cuentan; en las fórmulas, sí las mayúsculas de los símbolos. La pregunta solo cuenta como bien si todos sus cuadros lo están."));
   }
 
   // En los cuadros de respuesta no se puede pegar, copiar, cortar ni arrastrar texto; cada intento de pegar
