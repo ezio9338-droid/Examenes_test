@@ -352,17 +352,21 @@ function renderExam(session) {
     // Con varios cuadros, el enunciado son las líneas anteriores a la primera con un cuadro; el resto va con ellos.
     const lines = String(q.text ?? "").split("\n");
     const firstBlank = blankCount(q) ? lines.findIndex((l) => l.includes(BLANK)) : -1;
+    // Un solo cuadro con su etiqueta en la última línea («Pb(NO3)2» + «Stock:»): la etiqueta va junto al cuadro.
+    const inlineLabel = isShortQuestion(q) && !blankCount(q) && lines.length > 1 && /^[^:]{1,40}:$/.test(lines[lines.length - 1].trim())
+      ? lines[lines.length - 1].trim().slice(0, -1)
+      : null;
     group.append(
       h(
         "legend",
         {},
         h("span", { class: "qnum" }, `${i + 1}.`),
-        ...richNodes(firstBlank === -1 ? q.text : lines.slice(0, firstBlank).join("\n"), exam.imagenes),
+        ...richNodes(firstBlank !== -1 ? lines.slice(0, firstBlank).join("\n") : inlineLabel ? lines.slice(0, -1).join("\n") : q.text, exam.imagenes),
         showPoints ? h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}`) : null
       )
     );
     if (isOpenQuestion(q) || isShortQuestion(q)) {
-      group.append(isOpenQuestion(q) ? openAnswerBox(q) : blankCount(q) ? blanksBox(q, lines.slice(firstBlank)) : shortAnswerBox(q));
+      group.append(isOpenQuestion(q) ? openAnswerBox(q) : blankCount(q) ? blanksBox(q, lines.slice(firstBlank)) : shortAnswerBox(q, inlineLabel));
       fieldset.append(group);
       return;
     }
@@ -429,7 +433,7 @@ function renderExam(session) {
 
   // Respuesta corta: una línea (palabra, número o fórmula) que se corrige sola. Sin mayúsculas ni
   // correcciones automáticas del teclado, que estropearían fórmulas como NaCl.
-  function shortAnswerBox(q) {
+  function shortAnswerBox(q, label = null) {
     const input = h("input", {
       type: "text",
       class: "open-answer short-answer",
@@ -437,8 +441,8 @@ function renderExam(session) {
       autocomplete: "off",
       autocapitalize: "off",
       spellcheck: "false",
-      "aria-label": "Tu respuesta",
-      placeholder: "Escribe aquí tu respuesta",
+      "aria-label": label ?? "Tu respuesta",
+      placeholder: label ? null : "Escribe aquí tu respuesta",
     });
     input.setAttribute("autocorrect", "off");
     input.value = progress.answers[q.id] ?? "";
@@ -455,7 +459,9 @@ function renderExam(session) {
         input.blur();
       }
     });
-    return h("div", { class: "open-box" }, input, h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes)."));
+    const hint = h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes).");
+    if (label) return h("div", { class: "open-box" }, h("div", { class: "blank-row" }, h("span", { class: "blank-label" }, `${label}:`), input), hint);
+    return h("div", { class: "open-box" }, input, hint);
   }
 
   // Respuesta corta con varios cuadros: cada línea del enunciado con sus cuadros en el sitio de cada marca
