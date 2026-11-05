@@ -1,7 +1,8 @@
 // Parser de un subconjunto de GIFT: opción múltiple con una única respuesta correcta, respuesta corta
-// ({=NaCl =ClNa}: solo respuestas aceptadas, sin ~) y abierta ({}). Función pura: no toca el DOM ni la red. Se usa en el panel del profesor.
+// ({=NaCl =ClNa}: solo respuestas aceptadas, sin ~; con varios {…} en el enunciado, un cuadro por cada uno)
+// y abierta ({}). Función pura: no toca el DOM ni la red. Se usa en el panel del profesor.
 
-import { MAX_SHORT_ANSWERS, MAX_SHORT_CHARS } from "./short.js";
+import { MAX_SHORT_ANSWERS, MAX_SHORT_CHARS, BLANK, MAX_BLANKS } from "./short.js";
 
 const ESCAPABLE = new Set([":", "=", "~", "#", "{", "}", "\\"]);
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
@@ -100,6 +101,48 @@ function parseOption(part) {
   return { text: unescapeGift(raw.trim()), correct: part.correct };
 }
 
+// Respuestas aceptadas de un cuadro de respuesta corta, sin repetir; `where` dice qué cuadro es en los errores.
+function acceptedAnswers(parts, n, where) {
+  const respuestas = [...new Set(parts.map((p) => parseOption(p).text))];
+  if (respuestas.some((r) => !r)) throw new Error(`Pregunta ${n}${where}: hay una respuesta aceptada vacía.`);
+  if (respuestas.length > MAX_SHORT_ANSWERS) {
+    throw new Error(`Pregunta ${n}${where}: demasiadas respuestas aceptadas (máximo ${MAX_SHORT_ANSWERS}).`);
+  }
+  if (respuestas.some((r) => r.length > MAX_SHORT_CHARS)) {
+    throw new Error(`Pregunta ${n}${where}: una respuesta aceptada supera los ${MAX_SHORT_CHARS} caracteres.`);
+  }
+  return respuestas;
+}
+
+// Respuesta corta con varios cuadros: «Prefijos: {=…} Stock: {=…}». El texto que rodea a los bloques queda en el
+// enunciado, con la marca BLANK en el sitio de cada cuadro; sus respuestas aceptadas, en `huecos`.
+function parseMultiBlank(rest, blocks, title, n) {
+  if (blocks.length > MAX_BLANKS) {
+    throw new Error(`Pregunta ${n}: demasiados cuadros de respuesta (máximo ${MAX_BLANKS}).`);
+  }
+  const segments = blocks.map((b, i) => rest.slice(i ? blocks[i - 1].close + 1 : 0, b.open));
+  segments.push(rest.slice(blocks[blocks.length - 1].close + 1));
+  let valor = 1;
+  segments[0] = segments[0].replace(/^\s+/, "");
+  const mark = VALUE_MARK.exec(segments[0]);
+  if (mark) {
+    valor = parseValue(mark[1], n);
+    segments[0] = segments[0].slice(mark[0].length);
+  }
+  const huecos = blocks.map((b, i) => {
+    const parts = splitOptions(rest.slice(b.open + 1, b.close));
+    if (!parts.length || !parts.every((p) => p.correct)) {
+      throw new Error(
+        `Pregunta ${n}: con varios cuadros de respuesta, cada { } debe llevar solo respuestas con = (el cuadro ${i + 1} no las lleva).`
+      );
+    }
+    return acceptedAnswers(parts, n, `, cuadro ${i + 1}`);
+  });
+  const text = segments.map(unescapeGift).join(BLANK).trim();
+  if (!text.split(BLANK).join("").trim()) throw new Error(`Pregunta ${n}: el enunciado está vacío.`);
+  return { id: `q${n}`, title, text, options: [], correct: null, huecos, valor, tipo: "corta" };
+}
+
 function parseBlock(block, n) {
   let rest = block.trim();
   let title = "";
@@ -124,14 +167,21 @@ function parseBlock(block, n) {
     rest = rest.slice(close + 2).trim();
   }
 
-  const open = indexOfUnescaped(rest, "{");
-  if (open === -1) {
+  // Bloques de respuestas { … }: normalmente uno; varios = respuesta corta con un cuadro por bloque.
+  const blocks = [];
+  for (let from = 0; ; ) {
+    const o = indexOfUnescaped(rest, "{", from);
+    if (o === -1) break;
+    const c = indexOfUnescaped(rest, "}", o + 1);
+    if (c === -1) throw new Error(`Pregunta ${n}: falta la llave de cierre }.`);
+    blocks.push({ open: o, close: c });
+    from = c + 1;
+  }
+  if (!blocks.length) {
     throw new Error(`Pregunta ${n}: no tiene bloque de respuestas { ... }.`);
   }
-  const close = indexOfUnescaped(rest, "}", open + 1);
-  if (close === -1) {
-    throw new Error(`Pregunta ${n}: falta la llave de cierre }.`);
-  }
+  if (blocks.length > 1) return parseMultiBlank(rest, blocks, title, n);
+  const { open, close } = blocks[0];
 
   let before = rest.slice(0, open).trim();
   const after = rest.slice(close + 1).trim();
@@ -152,15 +202,7 @@ function parseBlock(block, n) {
   const parts = splitOptions(rest.slice(open + 1, close));
   // Solo respuestas con = (ninguna ~): respuesta corta, se corrige sola comparando con las aceptadas.
   if (parts.length && parts.every((p) => p.correct)) {
-    const respuestas = [...new Set(parts.map((p) => parseOption(p).text))];
-    if (respuestas.some((r) => !r)) throw new Error(`Pregunta ${n}: hay una respuesta aceptada vacía.`);
-    if (respuestas.length > MAX_SHORT_ANSWERS) {
-      throw new Error(`Pregunta ${n}: demasiadas respuestas aceptadas (máximo ${MAX_SHORT_ANSWERS}).`);
-    }
-    if (respuestas.some((r) => r.length > MAX_SHORT_CHARS)) {
-      throw new Error(`Pregunta ${n}: una respuesta aceptada supera los ${MAX_SHORT_CHARS} caracteres.`);
-    }
-    return { id: `q${n}`, title, text, options: [], correct: null, respuestas, valor, tipo: "corta" };
+    return { id: `q${n}`, title, text, options: [], correct: null, respuestas: acceptedAnswers(parts, n, ""), valor, tipo: "corta" };
   }
   if (parts.length < 2) {
     throw new Error(`Pregunta ${n}: necesita al menos 2 opciones (tiene ${parts.length}).`);
@@ -258,7 +300,13 @@ export function toGift(questions, comment = "") {
     const mark = valueMark(q.valor) || (!title && text.startsWith("//") ? "[valor=1] " : "");
     const head = `${title}${mark}${text}`;
     if (q.tipo === "abierta") return `${head}{}`;
-    if (q.tipo === "corta") return `${head}{${(q.respuestas ?? []).map((r) => `=${escapeGift(r)}`).join(" ")}}`;
+    const answersBlock = (list) => `{${(list ?? []).map((r) => `=${escapeGift(r)}`).join(" ")}}`;
+    if (q.tipo === "corta" && Array.isArray(q.huecos)) {
+      // Varios cuadros: cada marca del enunciado vuelve a ser su bloque { … }.
+      const parts = String(q.text ?? "").split(BLANK);
+      return `${title}${mark}${parts.map((p, i) => escapeGift(p) + (i < q.huecos.length ? answersBlock(q.huecos[i]) : "")).join("")}`;
+    }
+    if (q.tipo === "corta") return `${head}${answersBlock(q.respuestas)}`;
     const options = q.options.map((o) => `${o.id === q.correct ? "=" : "~"}${escapeGift(o.text)}`);
     return `${head}{\n${options.join("\n")}\n}`;
   });

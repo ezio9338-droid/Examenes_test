@@ -167,7 +167,10 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
         "div",
         { class: "card q-head" },
         h("div", { class: "q-text" }, h("strong", {}, `${current.n}. `), ...richNodes(current.text, res.exam.imagenes ?? {})),
-        h("p", { class: "small" }, `${accepted.length === 1 ? "Respuesta aceptada" : "Respuestas aceptadas"}: `, h("strong", {}, accepted.join(" · "))),
+        Array.isArray(current.huecos)
+          ? current.huecos.map((list, k) => h("p", { class: "small" }, `${current.etiquetas?.[k] ?? `Cuadro ${k + 1}`}: `, h("strong", {}, list.join(" · "))))
+          : h("p", { class: "small" }, `${accepted.length === 1 ? "Respuesta aceptada" : "Respuestas aceptadas"}: `, h("strong", {}, accepted.join(" · "))),
+        Array.isArray(current.huecos) ? h("p", { class: "muted small" }, "Todo o nada: la pregunta está bien solo si todos sus cuadros lo están.") : null,
         h("p", { class: "muted small" }, `Vale ${fmt(current.valor)} ${current.valor === 1 ? "punto" : "puntos"}. Ya están corregidas solas; si una respuesta está bien (o mal) aunque la corrección automática diga lo contrario, cámbiala con los botones y la nota del alumno se recalcula.`),
         progress,
         only

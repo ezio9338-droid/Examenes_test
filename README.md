@@ -135,6 +135,29 @@ Cómo se compara (para que no haga falta prever cada variante):
 
 Cuentan como las de test (acierto, error o en blanco) y suman sus puntos, pero **un error no resta**: escribiendo al azar no se acierta.
 
+**Varios cuadros en una pregunta.** Si pones varios bloques `{=…}` en una misma pregunta, el alumno ve un cuadro por bloque, en el sitio donde lo escribiste. El texto que va delante de cada bloque en su línea hace de etiqueta del cuadro. Sirve, por ejemplo, para dar una de las tres nomenclaturas y pedir las otras dos:
+
+```
+::F01::Fe2O3
+Prefijos: {=trióxido de dihierro}
+Stock: {=óxido de hierro(III)}
+
+::F02::trióxido de azufre
+Fórmula: {=SO3}
+Stock: {=óxido de azufre(VI)}
+
+::F03::HNO3
+Tradicional: {=ácido nítrico}
+```
+
+- Cada pregunta puede tener los cuadros que necesite (hasta 10): la del ácido, solo uno.
+- Se corrige **todo o nada**: la pregunta cuenta como bien solo si **todos** sus cuadros están bien. Si deja alguno vacío o lo falla, es un error (que no resta). Si no rellena ninguno, queda en blanco.
+- Cada cuadro admite varias respuestas válidas (`{=monóxido de disodio =óxido de disodio}`) y se compara como cualquier respuesta corta (ortografía, mayúsculas en fórmulas y números romanos…).
+- Varios cuadros pueden ir en la misma línea: `Fórmula: {=SO3} Stock: {=óxido de azufre(VI)}`.
+- Al enviar, una pregunta con algún cuadro vacío sale en la lista de «En blanco», para que el alumno la revise.
+- En «Revisar respuestas cortas» ves lo que escribió en cada cuadro y puedes marcar la pregunta entera como correcta o incorrecta. En la revisión del alumno, cada cuadro aparece con su etiqueta y, si falló, su respuesta correcta.
+- Requiere `Code.gs` actualizado; si no lo está, el panel no publica el examen.
+
 **Cambiar la corrección a mano.** Llegan ya corregidas, pero puedes cambiarlas: en «Mis exámenes», el botón **Revisar respuestas cortas** (o **Corregir abiertas**, si el examen también tiene abiertas) muestra cada pregunta de respuesta corta con lo que ha escrito cada alumno, marcado como «Correcta · automática» o «Incorrecta · automática». Si un alumno escribió algo válido que no habías previsto (por ejemplo «ClNa»), pulsa **✓ Correcta**, y si quieres dar por mala una que la máquina aceptó, **✗ Incorrecta**: la nota del alumno, sus aciertos y errores se recalculan al momento en la hoja y en la revisión. Volver a pulsar lo que diría la corrección automática la deja como automática. «Mostrar solo las incorrectas» te enseña solo las que conviene mirar. Las correcciones a mano se guardan en la columna oculta `cortas_manual` de la hoja.
 
 En la revisión, el alumno ve lo que escribió y, si falló, la respuesta correcta. En ese cuadro tampoco se puede pegar texto. Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
@@ -187,6 +210,10 @@ REGLAS DEL FORMATO (obligatorias):
    PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y con su ortografía correcta (tildes incluidas), y las fórmulas con sus mayúsculas exactas. Ejemplos:
    ::C01::Escribe la fórmula del cloruro de sodio.{=NaCl}
    ::C02::¿Cómo se llama el compuesto NaCl?{=cloruro de sodio =cloruro sódico}
+   Si una pregunta pide VARIAS respuestas cortas (por ejemplo, dos nomenclaturas), pon un bloque {=…} por cuadro, cada uno en su línea detrás de su etiqueta. La pregunta solo cuenta como bien si todos los cuadros lo están:
+   ::F01::Fe2O3
+   Prefijos: {=trióxido de dihierro}
+   Stock: {=óxido de hierro(III)}
 8. Para escribir los caracteres : = ~ # { } dentro de un texto, ponles delante una barra invertida (\= \{ \}...). Evita fórmulas en LaTeX; escribe las fórmulas con texto simple (v = d/t, 3x^2).
 9. Imágenes (solo en el enunciado, no en opciones): ![descripción](nombre.png) con un nombre de archivo simple, sin carpetas ni http. Solo si yo te indico qué imágenes hay.
 10. Títulos ::P01::, ::P02::... correlativos (A01, A02... para abiertas; C01, C02... para respuesta corta). Los comentarios empiezan por //.
