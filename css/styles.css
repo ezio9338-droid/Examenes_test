@@ -230,6 +230,10 @@ dialog.warning h2 { color: var(--danger); }
 
 /* Respuesta abierta */
 .open-box { margin-top: 10px; }
+.blank-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 10px; }
+.blank-label { font-weight: 600; }
+.blank-row .short-answer.open-answer { flex: 1 1 220px; }
+.review-blank { margin: 0 0 10px; }
 .short-answer.open-answer { min-height: 0; max-width: 420px; font-size: 1.1rem; resize: none; }
 .open-answer { width: 100%; min-height: 140px; padding: 10px 12px; font: inherit; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--bg); resize: vertical; -webkit-user-select: text; user-select: text; }
 .points-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; font-size: 0.8rem; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; vertical-align: middle; }

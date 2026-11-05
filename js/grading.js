@@ -1,5 +1,5 @@
 // Corrección con penalización por error. Función pura.
-import { shortAnswerMatches } from "./short.js";
+import { shortBlanks, shortIsBlank, shortAllCorrect } from "./short.js";
 // La misma lógica está replicada en apps-script/Code.gs: si cambia una, cambia la otra.
 
 const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
@@ -83,11 +83,17 @@ export function gradeExam(questions, answers, opts = {}) {
     puntosTestMax += valor;
     const given = answers?.[q.id];
     if (isShortQuestion(q)) {
-      if (given !== undefined && given !== null && typeof given !== "string") {
+      // Un cuadro: un texto. Varios cuadros: una lista de textos (o null), uno por cuadro.
+      const multi = shortBlanks(q).length > 1;
+      const ok = multi
+        ? Array.isArray(given) && given.length <= shortBlanks(q).length && given.every((v) => v === null || typeof v === "string")
+        : typeof given === "string";
+      if (given !== undefined && given !== null && !ok) {
         throw new Error(`Respuesta no válida en ${q.id}`);
       }
-      if (!given || !given.trim()) blancos++;
-      else if (typeof shortOverrides[q.id] === "boolean" ? shortOverrides[q.id] : shortAnswerMatches(q.respuestas, given)) {
+      // Todo o nada: con varios cuadros solo está bien si lo están todos; en blanco, si no rellenó ninguno.
+      if (shortIsBlank(q, given)) blancos++;
+      else if (typeof shortOverrides[q.id] === "boolean" ? shortOverrides[q.id] : shortAllCorrect(q, given)) {
         aciertos++;
         valorAciertos += valor;
       } else errores++; // sin penalización: es difícil acertar escribiendo al azar

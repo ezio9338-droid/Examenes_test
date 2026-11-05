@@ -7,7 +7,11 @@ import { createWatcher } from "./watch.js";
 import { richNodes } from "./rich.js";
 import { normalize, seededShuffle, formatClock, penaltyFraction, formatNumber, newSendId } from "./util.js";
 import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./grading.js";
-import { MAX_SHORT_CHARS } from "./short.js";
+import { MAX_SHORT_CHARS, BLANK, blankLabels } from "./short.js";
+
+// Cuadros de una pregunta de respuesta corta con varios: tantos como marcas en su enunciado (0 = un solo cuadro,
+// el de siempre). El alumno nunca recibe las respuestas aceptadas, solo el enunciado con las marcas.
+const blankCount = (q) => (isShortQuestion(q) ? String(q.text ?? "").split(BLANK).length - 1 : 0);
 
 const MAX_OPEN_CHARS = 4000;
 
@@ -309,7 +313,7 @@ function startExam(exam, who) {
   // Descarta respuestas guardadas que ya no correspondan a este examen.
   for (const q of questions) {
     const given = progress.answers[q.id];
-    const fits = isShortQuestion(q) ? typeof given === "string" : !isOpenQuestion(q) && q.options.some((o) => o.id === given);
+    const fits = blankCount(q) ? Array.isArray(given) : isShortQuestion(q) ? typeof given === "string" : !isOpenQuestion(q) && q.options.some((o) => o.id === given);
     if (given && !fits) delete progress.answers[q.id];
   }
 
@@ -333,7 +337,11 @@ function renderExam(session) {
   const timer = h("span", { class: "timer", role: "timer" });
   const status = h("div", { class: "status", hidden: true, role: "status" });
   const fieldset = h("fieldset", { class: "question" });
-  const isAnswered = (q) => Boolean(String((isOpenQuestion(q) ? progress.open : progress.answers)[q.id] ?? "").trim());
+  // Con varios cuadros, contestada solo si están todos rellenos (si no, sale entre las «en blanco» al enviar).
+  const isAnswered = (q) =>
+    blankCount(q)
+      ? Array.from({ length: blankCount(q) }, (_, k) => String(progress.answers[q.id]?.[k] ?? "").trim()).every(Boolean)
+      : Boolean(String((isOpenQuestion(q) ? progress.open : progress.answers)[q.id] ?? "").trim());
   const answered = () => questions.filter(isAnswered).length;
   const showPoints = questions.some((q) => questionValue(q) !== 1);
   const updateCounter = () => (counter.textContent = `Contestadas: ${answered()} de ${total}`);
@@ -341,17 +349,20 @@ function renderExam(session) {
 
   questions.forEach((q, i) => {
     const group = h("fieldset", { class: "question card question-card", id: `p${i + 1}` });
+    // Con varios cuadros, el enunciado son las líneas anteriores a la primera con un cuadro; el resto va con ellos.
+    const lines = String(q.text ?? "").split("\n");
+    const firstBlank = blankCount(q) ? lines.findIndex((l) => l.includes(BLANK)) : -1;
     group.append(
       h(
         "legend",
         {},
         h("span", { class: "qnum" }, `${i + 1}.`),
-        ...richNodes(q.text, exam.imagenes),
+        ...richNodes(firstBlank === -1 ? q.text : lines.slice(0, firstBlank).join("\n"), exam.imagenes),
         showPoints ? h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}`) : null
       )
     );
     if (isOpenQuestion(q) || isShortQuestion(q)) {
-      group.append(isOpenQuestion(q) ? openAnswerBox(q) : shortAnswerBox(q));
+      group.append(isOpenQuestion(q) ? openAnswerBox(q) : blankCount(q) ? blanksBox(q, lines.slice(firstBlank)) : shortAnswerBox(q));
       fieldset.append(group);
       return;
     }
@@ -447,6 +458,52 @@ function renderExam(session) {
     return h("div", { class: "open-box" }, input, h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes)."));
   }
 
+  // Respuesta corta con varios cuadros: cada línea del enunciado con sus cuadros en el sitio de cada marca
+  // («Prefijos: [____]»). La respuesta se guarda como una lista, un texto por cuadro.
+  function blanksBox(q, lines) {
+    const n = blankCount(q);
+    const labels = blankLabels(q.text);
+    const values = Array.from({ length: n }, (_, k) => String(progress.answers[q.id]?.[k] ?? ""));
+    let k = 0;
+    const rows = lines.map((line) => {
+      const row = h("div", { class: "blank-row" });
+      const parts = line.split(BLANK);
+      parts.forEach((part, j) => {
+        if (part.trim()) row.append(h("span", { class: "blank-label" }, ...richNodes(part.trim(), exam.imagenes)));
+        if (j < parts.length - 1) row.append(blankInput(k++));
+      });
+      return row;
+    });
+    function blankInput(idx) {
+      const input = h("input", {
+        type: "text",
+        class: "open-answer short-answer",
+        maxlength: MAX_SHORT_CHARS,
+        autocomplete: "off",
+        autocapitalize: "off",
+        spellcheck: "false",
+        "aria-label": labels[idx],
+      });
+      input.setAttribute("autocorrect", "off");
+      input.value = values[idx];
+      noPaste(input);
+      input.addEventListener("input", () => {
+        values[idx] = input.value;
+        progress.answers[q.id] = [...values];
+        save();
+        updateCounter();
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          input.blur();
+        }
+      });
+      return input;
+    }
+    return h("div", { class: "open-box" }, ...rows, h("small", { class: "hint" }, "Se tiene en cuenta la ortografía (también las tildes). La pregunta solo cuenta como bien si todos sus cuadros lo están."));
+  }
+
   // En los cuadros de respuesta no se puede pegar, copiar, cortar ni arrastrar texto; cada intento de pegar
   // queda registrado para el profesor.
   function noPaste(el) {
@@ -531,7 +588,10 @@ function renderExam(session) {
     const abiertas = {};
     for (const q of exam.questions) {
       if (isOpenQuestion(q)) abiertas[q.id] = (progress.open[q.id] ?? "").slice(0, MAX_OPEN_CHARS);
-      else if (isShortQuestion(q)) respuestas[q.id] = String(progress.answers[q.id] ?? "").trim().slice(0, MAX_SHORT_CHARS) || null;
+      else if (blankCount(q)) {
+        const list = Array.from({ length: blankCount(q) }, (_, k) => String(progress.answers[q.id]?.[k] ?? "").trim().slice(0, MAX_SHORT_CHARS) || null);
+        respuestas[q.id] = list.some(Boolean) ? list : null;
+      } else if (isShortQuestion(q)) respuestas[q.id] = String(progress.answers[q.id] ?? "").trim().slice(0, MAX_SHORT_CHARS) || null;
       else respuestas[q.id] = progress.answers[q.id] ?? null;
     }
     return {
@@ -979,7 +1039,10 @@ function showReview(r, onBack = null) {
   document.title = `Revisión · ${r.titulo}`;
   const pts = (v) => `${formatNumber(v)} ${v === 1 ? "punto" : "puntos"}`;
   const cards = r.questions.map((q, i) => {
-    const legend = h("p", { class: "review-qtext" }, h("span", { class: "qnum" }, `${i + 1}.`), ...richNodes(q.text, r.imagenes));
+    // Con varios cuadros, solo el enunciado: cada cuadro se muestra debajo con su etiqueta.
+    const lines = String(q.text ?? "").split("\n");
+    const firstBlank = Array.isArray(q.cuadros) ? lines.findIndex((l) => l.includes(BLANK)) : -1;
+    const legend = h("p", { class: "review-qtext" }, h("span", { class: "qnum" }, `${i + 1}.`), ...richNodes(firstBlank > 0 ? lines.slice(0, firstBlank).join("\n") : q.text, r.imagenes));
     if (q.tipo === "abierta") {
       const pending = q.puntos === null || q.puntos === undefined;
       return h(
@@ -993,6 +1056,24 @@ function showReview(r, onBack = null) {
     }
     const state = q.respuesta === null ? "blank" : (q.tipo === "corta" ? q.acertada : q.respuesta === q.correcta) ? "ok" : "bad";
     const label = { ok: "Correcta", bad: "Incorrecta", blank: "En blanco" }[state];
+    if (q.tipo === "corta" && Array.isArray(q.cuadros)) {
+      // Varios cuadros: lo que escribió en cada uno y, si la pregunta está mal, las respuestas válidas de los fallados.
+      return h(
+        "div",
+        { class: `card review-q ${state}` },
+        legend,
+        h("span", { class: `review-status ${state}` }, label),
+        q.cuadros.map((c) =>
+          h(
+            "div",
+            { class: "review-blank" },
+            h("p", { class: "muted small" }, `${c.etiqueta}:`),
+            c.respuesta ? h("p", { class: `review-open${state === "ok" || c.acertada ? "" : " wrong"}` }, c.respuesta) : h("p", { class: "muted" }, "(en blanco)"),
+            state === "ok" || c.acertada ? null : h("p", { class: "review-open correct" }, c.correctas.join(" · "))
+          )
+        )
+      );
+    }
     if (q.tipo === "corta") {
       const accepted = q.correctas ?? [];
       return h(

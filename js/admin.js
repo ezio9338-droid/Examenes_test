@@ -7,7 +7,7 @@ import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./
 import { collectImageRefs, matchImage, MAX_IMAGES, MAX_TOTAL_IMAGE_CHARS } from "./images.js";
 import { prepareImage } from "./image-encode.js";
 import { richNodes } from "./rich.js";
-import { caseMatters } from "./short.js";
+import { caseMatters, blankLabels } from "./short.js";
 import { showCorrection, exportNotes, exportGift } from "./correction.js";
 
 const TOKEN_KEY = "admin_token";
@@ -410,6 +410,13 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
             h("div", { class: "q-text" }, h("strong", {}, `${i + 1}. `, q.title ? `[${q.title}] ` : ""), ...richNodes(q.text, imageMap()), h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}${isOpenQuestion(q) ? " · abierta" : isShortQuestion(q) ? " · respuesta corta" : ""}`)),
             isOpenQuestion(q)
               ? h("p", { class: "muted small" }, "Respuesta abierta: el alumno escribe en un cuadro de texto.")
+              : isShortQuestion(q) && Array.isArray(q.huecos)
+                ? h(
+                    "div",
+                    { class: "small" },
+                    h("p", {}, `Respuesta corta con ${q.huecos.length} cuadros (todo o nada: cuenta como bien solo si lo están todos).`),
+                    q.huecos.map((list, k) => h("p", {}, `${blankLabels(q.text)[k]}: `, h("strong", { class: "correct" }, list.join(" · ")), caseNote(list)))
+                  )
               : isShortQuestion(q)
                 ? h("p", { class: "small" }, `Respuesta corta. ${q.respuestas.length === 1 ? "Válida" : "Válidas"}: `, h("strong", { class: "correct" }, q.respuestas.join(" · ")), caseNote(q.respuestas))
                 : h("ol", {}, q.options.map((o) => h("li", { class: o.id === q.correct ? "correct" : null }, o.text, o.id === q.correct ? " ✓" : "")))
@@ -554,6 +561,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
       if (imagenes.length) needs.push(["imagenes", "guardar imágenes"]);
       if (questions.some((q) => isOpenQuestion(q) || questionValue(q) !== 1)) needs.push(["abiertas", "usar preguntas abiertas ni puntos por pregunta"]);
       if (questions.some(isShortQuestion)) needs.push(["cortas", "corregir preguntas de respuesta corta"]);
+      if (questions.some((q) => Array.isArray(q.huecos))) needs.push(["cuadros", "corregir preguntas con varios cuadros de respuesta"]);
       if (instrucciones.value.trim()) needs.push(["instrucciones", "mostrar instrucciones al alumno"]);
       if (needs.length) {
         const v = await apiGet({ action: "version" });

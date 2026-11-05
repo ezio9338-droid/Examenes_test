@@ -40,6 +40,8 @@ const MAX_OPEN_CHARS = 4000;  // longitud máxima de una respuesta abierta
 const MAX_INSTRUCTIONS = 2000; // instrucciones del examen para el alumno
 const MAX_SHORT_CHARS = 200;  // longitud máxima de una respuesta corta (y de cada respuesta aceptada)
 const MAX_SHORT_ANSWERS = 20; // respuestas aceptadas por pregunta de respuesta corta
+const MAX_BLANKS = 10;        // cuadros de respuesta en una pregunta de respuesta corta
+const BLANK = '\uE000';       // marca de cada cuadro en el enunciado (réplica de js/short.js)
 
 // Imágenes de los enunciados: ![descripción](archivo.png). Se guardan troceadas en la hoja "Imagenes".
 const SHEET_IMAGES = 'Imagenes';
@@ -51,7 +53,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -209,14 +211,21 @@ function submit_(p) {
   for (var key in answers) {
     if (!Object.prototype.hasOwnProperty.call(answers, key)) continue;
     var v = answers[key];
-    if (!known[key] || !(v === null || typeof v === 'string')) {
+    // Con varios cuadros, la respuesta es una lista de textos (o null), uno por cuadro.
+    var multi = !!known[key] && isShort_(known[key]) && shortBlanks_(known[key]).length > 1;
+    var shapeOk = multi
+      ? v === null || (Array.isArray(v) && v.length <= shortBlanks_(known[key]).length &&
+          v.every(function (x) { return x === null || typeof x === 'string'; }))
+      : v === null || typeof v === 'string';
+    if (!known[key] || !shapeOk) {
       return fail_('invalid_answers', 'Las respuestas no corresponden a este examen.');
     }
     if (isShort_(known[key]) && v !== null) {
-      answers[key] = v.replace(/\s+/g, ' ').trim();
-      if (answers[key].length > MAX_SHORT_CHARS) {
+      var list = (multi ? v : [v]).map(function (x) { return x === null ? null : x.replace(/\s+/g, ' ').trim(); });
+      if (list.some(function (x) { return x !== null && x.length > MAX_SHORT_CHARS; })) {
         return fail_('invalid_answers', 'Una respuesta corta supera los ' + MAX_SHORT_CHARS + ' caracteres.');
       }
+      answers[key] = multi ? list : list[0];
     }
   }
 
@@ -512,9 +521,20 @@ function review_(p) {
         var given = answers[q.id];
         if (isShort_(q)) {
           base.tipo = 'corta';
+          base.acertada = shortCorrect_(q, given, shortOverrides_(row, H));
+          if (Array.isArray(q.huecos)) {
+            // Varios cuadros: lo escrito en cada uno, si coincide y sus respuestas aceptadas.
+            var vals = shortGiven_(q, given);
+            var labels = blankLabels_(q.text);
+            base.cuadros = q.huecos.map(function (acc, k) {
+              return { etiqueta: labels[k], respuesta: vals[k].trim() ? vals[k] : null, correctas: acc.slice(),
+                acertada: vals[k].trim() !== '' && shortAnswerMatches_(acc, vals[k]) };
+            });
+            base.respuesta = shortIsBlank_(q, given) ? null : vals;
+            return base;
+          }
           base.correctas = q.respuestas.slice();
           base.respuesta = typeof given === 'string' && given.trim() !== '' ? given : null;
-          base.acertada = shortCorrect_(q, base.respuesta, shortOverrides_(row, H));
           return base;
         }
         base.tipo = 'test';
@@ -595,8 +615,12 @@ function results_(p) {
       try { answers = JSON.parse(String(get('respuestas_json') || '{}')) || {}; } catch (err) { answers = {}; }
       var manual = shortOverrides_(r, H);
       shortQs.forEach(function (q) {
-        var texto = typeof answers[q.id] === 'string' ? answers[q.id] : '';
-        cortas[q.id] = { texto: texto, auto: texto.trim() !== '' && shortAnswerMatches_(q.respuestas, texto), manual: typeof manual[q.id] === 'boolean' ? manual[q.id] : null };
+        // Con varios cuadros, cada uno en su línea con su etiqueta («Prefijos: …»).
+        var vals = shortGiven_(q, answers[q.id]);
+        var labels = Array.isArray(q.huecos) ? blankLabels_(q.text) : null;
+        var texto = shortIsBlank_(q, answers[q.id]) ? ''
+          : labels ? vals.map(function (t, k) { return labels[k] + ': ' + (t.trim() || '(en blanco)'); }).join('\n') : vals[0];
+        cortas[q.id] = { texto: texto, auto: shortAllCorrect_(q, answers[q.id]), manual: typeof manual[q.id] === 'boolean' ? manual[q.id] : null };
       });
     }
     var fecha = get('fecha');
@@ -624,7 +648,10 @@ function results_(p) {
       id: exam.id, titulo: exam.titulo,
       preguntas: questions.map(function (q, i) {
         var out = { id: q.id, n: i + 1, title: q.title, text: q.text, tipo: questionType_(q), valor: questionValue_(q) };
-        if (isShort_(q)) out.respuestas = q.respuestas.slice(); // solo con el token del profesor
+        if (isShort_(q) && Array.isArray(q.huecos)) {
+          out.huecos = q.huecos.map(function (a) { return a.slice(); }); // solo con el token del profesor
+          out.etiquetas = blankLabels_(q.text);
+        } else if (isShort_(q)) out.respuestas = q.respuestas.slice(); // solo con el token del profesor
         return out;
       }),
       imagenes: loadImages_(exam.id, questions)
@@ -784,8 +811,8 @@ function shortOverrides_(row, H) {
 
 // ¿Está bien una respuesta corta? La corrección a mano, si la hay; si no, la automática. En blanco nunca.
 function shortCorrect_(q, given, overrides) {
-  if (typeof given !== 'string' || !given.trim()) return false;
-  return typeof overrides[q.id] === 'boolean' ? overrides[q.id] : shortAnswerMatches_(q.respuestas, given);
+  if (shortIsBlank_(q, given)) return false;
+  return typeof overrides[q.id] === 'boolean' ? overrides[q.id] : shortAllCorrect_(q, given);
 }
 
 function questionType_(q) {
@@ -808,11 +835,17 @@ function gradeExam_(questions, answers, opts) {
     puntosTestMax += valor;
     var given = answers ? answers[q.id] : undefined;
     if (isShort_(q)) {
-      if (given !== undefined && given !== null && typeof given !== 'string') {
+      // Un cuadro: un texto. Varios cuadros: una lista de textos (o null), uno por cuadro.
+      var multi = shortBlanks_(q).length > 1;
+      var ok = multi
+        ? Array.isArray(given) && given.length <= shortBlanks_(q).length && given.every(function (v) { return v === null || typeof v === 'string'; })
+        : typeof given === 'string';
+      if (given !== undefined && given !== null && !ok) {
         throw new Error('Respuesta no válida en ' + q.id);
       }
-      if (!given || !given.trim()) blancos++;
-      else if (typeof manual[q.id] === 'boolean' ? manual[q.id] : shortAnswerMatches_(q.respuestas, given)) {
+      // Todo o nada: con varios cuadros solo está bien si lo están todos; en blanco, si no rellenó ninguno.
+      if (shortIsBlank_(q, given)) blancos++;
+      else if (typeof manual[q.id] === 'boolean' ? manual[q.id] : shortAllCorrect_(q, given)) {
         aciertos++;
         valorAciertos += valor;
       } else errores++; // sin penalización: es difícil acertar escribiendo al azar
@@ -890,6 +923,33 @@ function shortAnswerMatches_(accepted, given) {
     var rb = b.match(SHORT_RUNS_);
     return ra.length === rb.length && ra.every(function (run, k) { return !runMatters_(run) || run === rb[k]; });
   });
+}
+
+// Varios cuadros por pregunta (réplica de js/short.js).
+function shortBlanks_(q) {
+  return Array.isArray(q && q.huecos) ? q.huecos : [(q && q.respuestas) || []];
+}
+
+function shortGiven_(q, given) {
+  var n = shortBlanks_(q).length;
+  var list = n > 1 ? (Array.isArray(given) ? given : []) : [given];
+  var out = [];
+  for (var k = 0; k < n; k++) out.push(typeof list[k] === 'string' ? list[k] : '');
+  return out;
+}
+
+function shortIsBlank_(q, given) {
+  return shortGiven_(q, given).every(function (t) { return !t.trim(); });
+}
+
+function shortAllCorrect_(q, given) {
+  var vals = shortGiven_(q, given);
+  return shortBlanks_(q).every(function (accepted, k) { return vals[k].trim() !== '' && shortAnswerMatches_(accepted, vals[k]); });
+}
+
+function blankLabels_(text) {
+  var parts = String(text === undefined || text === null ? '' : text).split(BLANK);
+  return parts.slice(0, -1).map(function (p, k) { return p.split('\n').pop().replace(/[\s:]+$/, '').trim() || 'Cuadro ' + (k + 1); });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1182,6 +1242,7 @@ function validateQuestions_(qs) {
     }
     valor = Math.round(valor * 10000) / 10000;
     var title = typeof q.title === 'string' ? q.title.trim() : '';
+    if (q.tipo !== 'corta' && text.indexOf(BLANK) !== -1) throw new Error('Pregunta ' + n + ': enunciado no válido.');
     if (q.tipo === 'abierta') {
       if (Array.isArray(q.options) && q.options.length) {
         throw new Error('Pregunta ' + n + ': una pregunta abierta no lleva opciones.');
@@ -1192,15 +1253,26 @@ function validateQuestions_(qs) {
       if (Array.isArray(q.options) && q.options.length) {
         throw new Error('Pregunta ' + n + ': una pregunta de respuesta corta no lleva opciones.');
       }
-      if (!Array.isArray(q.respuestas) || !q.respuestas.length || q.respuestas.length > MAX_SHORT_ANSWERS) {
-        throw new Error('Pregunta ' + n + ': debe tener entre 1 y ' + MAX_SHORT_ANSWERS + ' respuestas aceptadas.');
+      var cleanAnswers = function (list) {
+        if (!Array.isArray(list) || !list.length || list.length > MAX_SHORT_ANSWERS) {
+          throw new Error('Pregunta ' + n + ': debe tener entre 1 y ' + MAX_SHORT_ANSWERS + ' respuestas aceptadas.');
+        }
+        return list.map(function (r) {
+          var t = typeof r === 'string' ? r.replace(/\s+/g, ' ').trim() : '';
+          if (!t || t.length > MAX_SHORT_CHARS) throw new Error('Pregunta ' + n + ': respuestas aceptadas no válidas.');
+          return t;
+        });
+      };
+      var marks = text.split(BLANK).length - 1;
+      if (q.huecos !== undefined) {
+        // Varios cuadros: una marca en el enunciado por cada lista de respuestas aceptadas.
+        if (!Array.isArray(q.huecos) || q.huecos.length < 2 || q.huecos.length > MAX_BLANKS || marks !== q.huecos.length) {
+          throw new Error('Pregunta ' + n + ': los cuadros de respuesta no son válidos (entre 2 y ' + MAX_BLANKS + ').');
+        }
+        return { id: q.id, title: title, text: text, options: [], correct: null, huecos: q.huecos.map(cleanAnswers), tipo: 'corta', valor: valor };
       }
-      var respuestas = q.respuestas.map(function (r) {
-        var t = typeof r === 'string' ? r.replace(/\s+/g, ' ').trim() : '';
-        if (!t || t.length > MAX_SHORT_CHARS) throw new Error('Pregunta ' + n + ': respuestas aceptadas no válidas.');
-        return t;
-      });
-      return { id: q.id, title: title, text: text, options: [], correct: null, respuestas: respuestas, tipo: 'corta', valor: valor };
+      if (marks) throw new Error('Pregunta ' + n + ': los cuadros de respuesta no son válidos.');
+      return { id: q.id, title: title, text: text, options: [], correct: null, respuestas: cleanAnswers(q.respuestas), tipo: 'corta', valor: valor };
     }
     if (q.tipo !== undefined && q.tipo !== 'test') throw new Error('Pregunta ' + n + ': tipo de pregunta no válido.');
     if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > MAX_OPTIONS) {

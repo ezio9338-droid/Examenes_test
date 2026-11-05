@@ -52,3 +52,35 @@ export function shortAnswerMatches(accepted, given) {
     return ra.length === rb.length && ra.every((run, i) => !runMatters(run) || run === rb[i]);
   });
 }
+
+/* ----------------------- varios cuadros por pregunta ----------------------- */
+
+// Una pregunta de respuesta corta puede tener varios cuadros (p. ej. «Prefijos: {…}» y «Stock: {…}»): su enunciado
+// lleva esta marca donde va cada cuadro, y sus respuestas aceptadas van en `huecos` (una lista por cuadro).
+export const BLANK = "\uE000";
+export const MAX_BLANKS = 10;
+
+/** Respuestas aceptadas de cada cuadro: [[…]] si tiene uno solo (`respuestas`), [[…], […]] si tiene varios (`huecos`). */
+export const shortBlanks = (q) => (Array.isArray(q?.huecos) ? q.huecos : [q?.respuestas ?? []]);
+
+/** Lo que escribió el alumno en cada cuadro, como lista de textos ("" = vacío). */
+export function shortGiven(q, given) {
+  const n = shortBlanks(q).length;
+  const list = n > 1 ? (Array.isArray(given) ? given : []) : [given];
+  return Array.from({ length: n }, (_, i) => (typeof list[i] === "string" ? list[i] : ""));
+}
+
+/** ¿Dejó en blanco todos los cuadros? */
+export const shortIsBlank = (q, given) => shortGiven(q, given).every((t) => !t.trim());
+
+/** ¿Está bien? Todo o nada: cada cuadro debe coincidir con alguna de sus respuestas aceptadas. */
+export function shortAllCorrect(q, given) {
+  const vals = shortGiven(q, given);
+  return shortBlanks(q).every((accepted, i) => vals[i].trim() !== "" && shortAnswerMatches(accepted, vals[i]));
+}
+
+/** Etiqueta de cada cuadro: el texto que lo precede en su línea («Prefijos:» → «Prefijos»), o «Cuadro n». */
+export function blankLabels(text) {
+  const parts = String(text ?? "").split(BLANK);
+  return parts.slice(0, -1).map((p, i) => p.split("\n").pop().replace(/[\s:]+$/, "").trim() || `Cuadro ${i + 1}`);
+}
