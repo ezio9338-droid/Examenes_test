@@ -238,7 +238,7 @@ function showPanel(initialExams) {
         return h(
           "div",
           { class: "exam-item" },
-          h("h3", {}, ex.titulo, " ", h("span", { class: `badge ${ex.activo ? "on" : "off"}` }, ex.activo ? "Abierto" : "Cerrado"), ex.control_salidas ? " " : null, ex.control_salidas ? h("span", { class: "badge on" }, `Vigilado · ${ex.salidas_permitidas ?? 3} salidas${ex.pantalla_completa ? " · pantalla completa en ordenadores" : ""}`) : null, ex.revision ? " " : null, ex.revision ? h("span", { class: "badge on" }, "Revisión publicada") : null),
+          h("h3", {}, ex.titulo, " ", h("span", { class: `badge ${ex.activo ? "on" : "off"}` }, ex.activo ? "Abierto" : "Cerrado"), ex.control_salidas ? " " : null, ex.control_salidas ? h("span", { class: "badge on" }, `Vigilado · ${ex.salidas_permitidas ?? 3} salidas${ex.pantalla_completa ? " · pantalla completa en ordenadores" : ""}`) : null, ex.revision ? " " : null, ex.revision ? h("span", { class: "badge on" }, "Revisión publicada") : null, ex.practica ? " " : null, ex.practica ? h("span", { class: "badge off-soft" }, "Práctica") : null),
           h(
             "p",
             { class: "muted small meta" },
@@ -354,11 +354,16 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     h("small", { class: "hint" }, "Al superarlas, el examen se envía solo. Con 3, a la cuarta salida se envía. Con 0, se envía en la primera.")
   );
   const pantallaCompleta = check("Exigir pantalla completa en ordenadores (Mac y Windows; opcional): pide pantalla completa al empezar y oculta el examen si se sale de ella. En iPad, tabletas y móviles no se pide", false);
+  // Modo práctica: para estudiar. Se repite las veces que se quiera, el alumno ve sus fallos al enviar, sin vigilancia
+  // y sin guardar los intentos en la hoja.
+  const practica = check("Modo práctica (para estudiar): el alumno puede repetirlo las veces que quiera y, al enviarlo, ve qué tiene bien y mal con las respuestas correctas. Sin vigilancia y sin guardar los intentos en la hoja", false);
   const refreshVigilar = () => {
-    salidasInput.disabled = !vigilar.input.checked;
-    pantallaCompleta.input.disabled = !vigilar.input.checked;
+    vigilar.input.disabled = practica.input.checked;
+    salidasInput.disabled = !vigilar.input.checked || practica.input.checked;
+    pantallaCompleta.input.disabled = !vigilar.input.checked || practica.input.checked;
   };
   vigilar.input.addEventListener("change", refreshVigilar);
+  practica.input.addEventListener("change", refreshVigilar);
 
   const msg = h("div");
   const publish = h("button", { class: "btn block", type: "submit", disabled: true }, "Publicar examen");
@@ -530,6 +535,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     barOpc.node,
     mostrar.node,
     negativa.node,
+    practica.node,
     vigilar.node,
     salidasField,
     pantallaCompleta.node,
@@ -562,6 +568,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
       if (questions.some((q) => isOpenQuestion(q) || questionValue(q) !== 1)) needs.push(["abiertas", "usar preguntas abiertas ni puntos por pregunta"]);
       if (questions.some(isShortQuestion)) needs.push(["cortas", "corregir preguntas de respuesta corta"]);
       if (questions.some((q) => Array.isArray(q.huecos))) needs.push(["cuadros", "corregir preguntas con varios cuadros de respuesta"]);
+      if (practica.input.checked) needs.push(["practica", "publicar exámenes de práctica"]);
       if (instrucciones.value.trim()) needs.push(["instrucciones", "mostrar instrucciones al alumno"]);
       if (needs.length) {
         const v = await apiGet({ action: "version" });
@@ -587,8 +594,9 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
         permitir_negativa: negativa.input.checked,
         penalizacion,
         imagenes,
-        control_salidas: vigilar.input.checked,
-        pantalla_completa: vigilar.input.checked && pantallaCompleta.input.checked,
+        control_salidas: vigilar.input.checked && !practica.input.checked,
+        pantalla_completa: vigilar.input.checked && !practica.input.checked && pantallaCompleta.input.checked,
+        practica: practica.input.checked,
         salidas_permitidas: salidasInput.value === "" ? 3 : Math.max(0, Math.min(20, Math.floor(Number(salidasInput.value)) || 0)),
         preguntas: questions,
       });
