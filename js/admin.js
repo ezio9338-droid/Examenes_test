@@ -193,6 +193,32 @@ function showPanel(initialExams) {
           typeof ex.revision === "boolean"
             ? h("button", { class: "btn secondary small", type: "button" }, ex.revision ? "Ocultar revisión" : "Publicar revisión")
             : null;
+        // Convertir en práctica (o volver a examen) un examen ya publicado, sin tocar las notas guardadas.
+        const practiceToggle =
+          typeof ex.practica === "boolean"
+            ? h("button", { class: "btn secondary small", type: "button" }, ex.practica ? "Volver a examen" : "Convertir en práctica")
+            : null;
+        practiceToggle?.addEventListener("click", async () => {
+          const warn = ex.practica
+            ? [`«${ex.titulo}» volverá a ser un examen: los envíos se guardarán de nuevo en la hoja${ex.control_salidas ? " y volverá a estar vigilado" : ""}.`]
+            : [
+                `«${ex.titulo}» pasará a ser una práctica: los alumnos podrán repetirlo y, al enviarlo, verán qué tienen bien y mal con las respuestas correctas, sin vigilancia.`,
+                "Desde ahora no se guardará ningún envío nuevo. Las notas que ya están en la hoja no cambian.",
+                ...(ex.revision ? ["La revisión está publicada: quien hizo el examen desde su dispositivo seguirá viendo su revisión al abrir el enlace, en lugar de la práctica. Si quieres que practiquen, pulsa también «Ocultar revisión»."] : []),
+                ...(!ex.activo ? ["El examen está cerrado: ábrelo para que puedan practicar."] : []),
+              ];
+          if (!confirm(`${warn.join("\n\n")}\n\n¿Continuar?`)) return;
+          practiceToggle.disabled = true;
+          try {
+            const res = await apiPost({ action: "setPractice", token, id: ex.id, practica: !ex.practica });
+            if (res.error === "unauthorized") return onUnauthorized();
+            if (res.error === "bad_request") alert("El script de Google no está actualizado: actualiza Code.gs (Nueva versión) para poder convertir exámenes en práctica.");
+            else if (!res.ok) alert(res.message);
+          } catch (e) {
+            alert(errorText(e));
+          }
+          refreshList();
+        });
         reviewToggle?.addEventListener("click", async () => {
           if (
             !ex.revision &&
@@ -238,7 +264,7 @@ function showPanel(initialExams) {
         return h(
           "div",
           { class: "exam-item" },
-          h("h3", {}, ex.titulo, " ", h("span", { class: `badge ${ex.activo ? "on" : "off"}` }, ex.activo ? "Abierto" : "Cerrado"), ex.control_salidas ? " " : null, ex.control_salidas ? h("span", { class: "badge on" }, `Vigilado · ${ex.salidas_permitidas ?? 3} salidas${ex.pantalla_completa ? " · pantalla completa en ordenadores" : ""}`) : null, ex.revision ? " " : null, ex.revision ? h("span", { class: "badge on" }, "Revisión publicada") : null, ex.practica ? " " : null, ex.practica ? h("span", { class: "badge off-soft" }, "Práctica") : null),
+          h("h3", {}, ex.titulo, " ", h("span", { class: `badge ${ex.activo ? "on" : "off"}` }, ex.activo ? "Abierto" : "Cerrado"), ex.control_salidas && !ex.practica ? " " : null, ex.control_salidas && !ex.practica ? h("span", { class: "badge on" }, `Vigilado · ${ex.salidas_permitidas ?? 3} salidas${ex.pantalla_completa ? " · pantalla completa en ordenadores" : ""}`) : null, ex.revision ? " " : null, ex.revision ? h("span", { class: "badge on" }, "Revisión publicada") : null, ex.practica ? " " : null, ex.practica ? h("span", { class: "badge off-soft" }, "Práctica") : null),
           h(
             "p",
             { class: "muted small meta" },
@@ -262,6 +288,7 @@ function showPanel(initialExams) {
             giftBtn,
             toggle,
             reviewToggle,
+            practiceToggle,
             copy,
             h("a", { class: "btn secondary small", href: ex.results_url, target: "_blank", rel: "noopener" }, "Ver hoja de Google")
           )
