@@ -14,7 +14,7 @@ const EXAM_HEADERS = [
   'id', 'titulo', 'grupo_destino', 'activo', 'codigo_acceso', 'tiempo_min',
   'barajar_preguntas', 'barajar_opciones', 'mostrar_nota', 'permitir_negativa',
   'preguntas_json', 'creado', 'control_salidas', 'salidas_permitidas', 'penalizacion',
-  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones', 'gift'
+  'pantalla_completa', 'hoja_id', 'revision', 'instrucciones', 'gift', 'practica'
 ];
 // Hoja de resultados (una por examen). Orden de las columnas de las hojas nuevas; las hojas de versiones
 // anteriores se leen por el nombre de la cabecera y reciben al final las columnas extra que les falten.
@@ -53,7 +53,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -137,7 +137,8 @@ function getExam_(params) {
     control_salidas: exam.control_salidas,
     salidas_permitidas: exam.salidas_permitidas,
     penalizacion: exam.penalizacion,
-    pantalla_completa: exam.pantalla_completa
+    pantalla_completa: exam.pantalla_completa,
+    practica: exam.practica
   };
 
   var codeCheck = checkCode_(exam, params.code);
@@ -163,6 +164,7 @@ function getExam_(params) {
       salidas_permitidas: exam.salidas_permitidas,
       penalizacion: exam.penalizacion,
       pantalla_completa: exam.pantalla_completa,
+      practica: exam.practica,
       instrucciones: exam.instrucciones,
       imagenes: loadImages_(exam.id, questions),
       questions: questions.map(function (q) {
@@ -259,6 +261,19 @@ function submit_(p) {
     });
   } catch (err) {
     return fail_('invalid_answers', 'Las respuestas no corresponden a este examen.');
+  }
+
+  if (exam.practica) {
+    // Modo práctica: no se guarda nada en la hoja; el alumno ve al momento qué tiene bien y mal, y puede repetir.
+    return {
+      ok: true,
+      practica: true,
+      review: {
+        titulo: exam.titulo, nombre: nombre, apellidos: apellidos, practica: true,
+        nota: result.nota, aciertos: result.aciertos, errores: result.errores, blancos: result.blancos,
+        questions: reviewQuestions_(questions, answers, {}, function (q) { return { respuesta: openAnswers[q.id] || '', puntos: null }; })
+      }
+    };
   }
 
   var dur = Number(p.duracion_min);
@@ -395,6 +410,8 @@ function createExam_(p) {
     return fail_('invalid_exam', err.message);
   }
 
+  // Modo práctica: para estudiar, sin vigilancia (ni pantalla completa) y sin guardar los intentos.
+  var practica = toBool_(p.practica);
   var tiempo = Math.floor(Number(p.tiempo_min));
   if (!isFinite(tiempo) || tiempo < 0) tiempo = 0;
 
@@ -422,14 +439,15 @@ function createExam_(p) {
       toBool_(p.permitir_negativa),
       json,
       new Date(),
-      toBool_(p.control_salidas),
+      practica ? false : toBool_(p.control_salidas),
       allowedExits_(p.salidas_permitidas),
       penalizacion,
-      toBool_(p.pantalla_completa),
+      practica ? false : toBool_(p.pantalla_completa),
       resultsSheet.getSheetId(),
       false, // revisión: la publica el profesor desde el panel cuando todos han hecho el examen
       cleanInstructions_(p.instrucciones),
-      storedGift_(p.gift)
+      storedGift_(p.gift),
+      practica
     ], [1, 3, 5, 15, 19, 20]);
     formatExamsSheet_(getExamsSheet_()); // también embellece la hoja de quien ya la tenía
     storeImages_(id, images);
@@ -438,7 +456,7 @@ function createExam_(p) {
   }
 
   var out = { ok: true, id: id, imagenes: images.length, abiertas: questions.filter(isOpen_).length, n_preguntas: questions.length, caracteres: json.length, penalizacion: penalizacion,
-    pantalla_completa: toBool_(p.pantalla_completa) };
+    pantalla_completa: !practica && toBool_(p.pantalla_completa), practica: practica };
   if (json.length > WARN_CHARS) {
     out.warning = 'El examen ocupa ' + json.length + ' de 50 000 caracteres: está cerca del límite de la celda.';
   }
@@ -508,43 +526,52 @@ function review_(p) {
       nota: finalGrade_(exam, openQs, questions, row, H),
       aciertos: get('aciertos'), errores: get('errores'), blancos: get('blancos'),
       imagenes: loadImages_(exam.id, questions),
-      questions: questions.map(function (q) {
-        var base = { id: q.id, text: q.text, valor: questionValue_(q) };
-        if (isOpen_(q)) {
-          var c = openColumns_(q, questions);
-          var pts = H[c.pts] === undefined ? '' : row[H[c.pts]];
-          base.tipo = 'abierta';
-          base.respuesta = H[c.resp] === undefined ? '' : String(row[H[c.resp]]);
-          base.puntos = pts === '' ? null : Number(pts);
-          return base;
-        }
-        var given = answers[q.id];
-        if (isShort_(q)) {
-          base.tipo = 'corta';
-          base.acertada = shortCorrect_(q, given, shortOverrides_(row, H));
-          if (Array.isArray(q.huecos)) {
-            // Varios cuadros: lo escrito en cada uno, si coincide y sus respuestas aceptadas.
-            var vals = shortGiven_(q, given);
-            var labels = blankLabels_(q.text);
-            base.cuadros = q.huecos.map(function (acc, k) {
-              return { etiqueta: labels[k], respuesta: vals[k].trim() ? vals[k] : null, correctas: acc.slice(),
-                acertada: vals[k].trim() !== '' && shortAnswerMatches_(acc, vals[k]) };
-            });
-            base.respuesta = shortIsBlank_(q, given) ? null : vals;
-            return base;
-          }
-          base.correctas = q.respuestas.slice();
-          base.respuesta = typeof given === 'string' && given.trim() !== '' ? given : null;
-          return base;
-        }
-        base.tipo = 'test';
-        base.options = (q.options || []).map(function (o) { return { id: o.id, text: o.text }; });
-        base.correcta = q.correct;
-        base.respuesta = typeof given === 'string' && given !== '' ? given : null;
-        return base;
+      questions: reviewQuestions_(questions, answers, shortOverrides_(row, H), function (q) {
+        var c = openColumns_(q, questions);
+        var pts = H[c.pts] === undefined ? '' : row[H[c.pts]];
+        return { respuesta: H[c.resp] === undefined ? '' : String(row[H[c.resp]]), puntos: pts === '' ? null : Number(pts) };
       })
     }
   };
+}
+
+// Pregunta a pregunta, lo que ve el alumno al revisar: su respuesta, si es correcta y la solución.
+// `overrides` = correcciones a mano de las respuestas cortas; `openOf(q)` = {respuesta, puntos} de una abierta.
+function reviewQuestions_(questions, answers, overrides, openOf) {
+  return questions.map(function (q) {
+    var base = { id: q.id, text: q.text, valor: questionValue_(q) };
+    if (isOpen_(q)) {
+      var o = openOf(q);
+      base.tipo = 'abierta';
+      base.respuesta = o.respuesta;
+      base.puntos = o.puntos;
+      return base;
+    }
+    var given = answers[q.id];
+    if (isShort_(q)) {
+      base.tipo = 'corta';
+      base.acertada = shortCorrect_(q, given, overrides);
+      if (Array.isArray(q.huecos)) {
+        // Varios cuadros: lo escrito en cada uno, si coincide y sus respuestas aceptadas.
+        var vals = shortGiven_(q, given);
+        var labels = blankLabels_(q.text);
+        base.cuadros = q.huecos.map(function (acc, k) {
+          return { etiqueta: labels[k], respuesta: vals[k].trim() ? vals[k] : null, correctas: acc.slice(),
+            acertada: vals[k].trim() !== '' && shortAnswerMatches_(acc, vals[k]) };
+        });
+        base.respuesta = shortIsBlank_(q, given) ? null : vals;
+        return base;
+      }
+      base.correctas = q.respuestas.slice();
+      base.respuesta = typeof given === 'string' && given.trim() !== '' ? given : null;
+      return base;
+    }
+    base.tipo = 'test';
+    base.options = (q.options || []).map(function (o) { return { id: o.id, text: o.text }; });
+    base.correcta = q.correct;
+    base.respuesta = typeof given === 'string' && given !== '' ? given : null;
+    return base;
+  });
 }
 
 function listExams_(params) {
@@ -563,6 +590,7 @@ function listExams_(params) {
       penalizacion: ex.penalizacion,
       pantalla_completa: ex.pantalla_completa,
       revision: ex.revision,
+      practica: ex.practica,
       codigo_acceso: ex.codigo_acceso,
       tiempo_min: ex.tiempo_min,
       n_preguntas: JSON.parse(ex.preguntas_json).length,
@@ -1649,7 +1677,8 @@ function readExams_() {
       hoja_id: r[16] === '' || r[16] === undefined ? '' : String(r[16]),
       revision: toBool_(r[17]),
       instrucciones: r[18] === undefined ? '' : String(r[18]),
-      gift: r[19] === undefined ? '' : String(r[19])
+      gift: r[19] === undefined ? '' : String(r[19]),
+      practica: toBool_(r[20])
     });
   }
   return out;

@@ -177,6 +177,16 @@ La hoja de Google guarda los puntos, y la **nota final** de cada alumno (columna
 - Solo vale para envíos hechos con esta versión: los exámenes entregados antes no guardaron el identificador en el dispositivo.
 - Requiere `Code.gs` actualizado; si no lo está, el botón no aparece.
 
+**Modo práctica (para estudiar).** Al publicar, marca **Modo práctica** para que un examen sirva de simulacro:
+
+- El alumno puede hacerlo **todas las veces que quiera**. Al pulsar «Volver a intentarlo», empieza otra vez con el examen vacío y su nombre ya escrito.
+- **Al enviarlo ve al momento su resultado**: la nota, qué tiene bien y mal en cada pregunta y las respuestas correctas, sin esperar a que publiques la revisión.
+- **No hay vigilancia** (ni salidas, ni pantalla completa) y **los intentos no se guardan en la hoja**: no aparecen en la pestaña de resultados, ni en el CSV, ni en la corrección.
+- Las preguntas abiertas no se corrigen en la práctica: el alumno ve lo que escribió y cuentan como 0 en esa nota.
+- En «Mis exámenes» lleva la etiqueta **Práctica**. El código de acceso, el tiempo límite y cerrar el examen funcionan igual que siempre.
+- Para que un examen ya hecho sirva para estudiar, pulsa **Exportar preguntas (GIFT)** en el examen y publica ese GIFT como examen nuevo en modo práctica: así las notas del examen de verdad quedan aparte.
+- Requiere `Code.gs` actualizado; si no lo está, el panel no lo publica.
+
 **Exportar las preguntas (GIFT).** El botón **Exportar preguntas (GIFT)** de cada examen descarga sus preguntas, con las soluciones, en un archivo `.gift`: sirve para reutilizar un examen, retocarlo y publicarlo de nuevo, o recuperar el GIFT si lo has perdido. Al publicar, el panel guarda el **GIFT original tal como lo subiste** (con tus comentarios y tu formato) en la columna oculta `gift` de la pestaña `Examenes`, y eso es lo que se descarga. En los exámenes publicados antes de esta versión (o si el GIFT no cabía en una celda), se genera a partir de las preguntas guardadas: mismas preguntas, valores y soluciones, pero sin tus comentarios. Las instrucciones para el alumno van al principio como comentario (para reutilizarlas, cópialas al campo de instrucciones). Las imágenes no van dentro: el GIFT solo las cita por su nombre, así que al publicarlo de nuevo tendrás que volver a subirlas. El archivo lleva las soluciones: guárdalo fuera del repositorio. Requiere `Code.gs` actualizado.
 
 **Exportar las notas.** El botón **Exportar notas (CSV)** de cada examen descarga una tabla limpia (apellidos, nombre, grupo, nota final, aciertos, errores, en blanco, salidas, segundos fuera, desconexiones, segundos sin conexión, intentos de pegar), ordenada por apellidos y lista para abrir en Excel en español (separador `;`, decimales con coma).

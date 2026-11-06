@@ -226,7 +226,7 @@ function showStart(info, exam) {
     if (needsCode && !c) return fail("Escribe el código de acceso.");
 
     button.disabled = true;
-    if (info.control_salidas && fullscreenRequired(info.pantalla_completa)) enterFullscreen(); // dentro del gesto de pulsar «Empezar»
+    if (info.control_salidas && !info.practica && fullscreenRequired(info.pantalla_completa)) enterFullscreen(); // dentro del gesto de pulsar «Empezar»
     try {
       let loaded = exam;
       if (!loaded || needsCode) {
@@ -260,7 +260,15 @@ function showStart(info, exam) {
         h("p", {}, h("strong", {}, "Cómo se puntúa")),
         scoringText(exam?.questions, exam?.penalizacion ?? info.penalizacion, info.n_cortas).map((t) => (typeof t === "string" ? h("p", {}, t) : h("p", {}, h("strong", {}, t.strong))))
       ),
-      info.control_salidas
+      info.practica
+        ? h(
+            "div",
+            { class: "notice ok" },
+            h("p", {}, h("strong", {}, "Examen de práctica")),
+            h("p", {}, "Sirve para estudiar: no cuenta para la nota. Al enviarlo verás qué tienes bien y mal, con las respuestas correctas, y podrás repetirlo las veces que quieras.")
+          )
+        : null,
+      info.control_salidas && !info.practica
         ? h(
             "div",
             { class: "notice warn" },
@@ -324,7 +332,7 @@ function renderExam(session) {
   const { exam, questions, who, key, progress } = session;
   const total = questions.length;
   const limitSeconds = (Number(exam.tiempo_min) || 0) * 60;
-  const watched = Boolean(exam.control_salidas);
+  const watched = Boolean(exam.control_salidas) && !exam.practica; // la práctica nunca se vigila
   const allowed = Number.isFinite(Number(exam.salidas_permitidas)) ? Number(exam.salidas_permitidas) : 3;
   // La pantalla completa solo se exige si el profesor lo ha marcado al publicar el examen, y solo en ordenadores.
   const fsActive = fullscreenRequired(exam.pantalla_completa);
@@ -677,6 +685,10 @@ function renderExam(session) {
     clearInterval(watchTimer);
     releaseScreen();
     store.remove(key);
+    if (res.practica && res.review) {
+      // Práctica: no se recuerda el envío (no hay revisión que esperar) y se conserva el nombre para repetir.
+      return showReview({ ...res.review, imagenes: exam.imagenes });
+    }
     store.remove(lastKey());
     rememberSend({ envioId: progress.envioId, nombre: who.nombre, apellidos: who.apellidos });
     showDone(res, motivo);
@@ -1041,8 +1053,10 @@ function showReviewPicker(reviews) {
   );
 }
 
+// `r.practica`: resultado de un examen de práctica, recién enviado (no es la revisión publicada por el profesor).
 function showReview(r, onBack = null) {
-  document.title = `Revisión · ${r.titulo}`;
+  const retry = () => h("div", { class: "actions" }, h("button", { type: "button", class: "btn", onclick: () => location.reload() }, "Volver a intentarlo"));
+  document.title = `${r.practica ? "Resultado" : "Revisión"} · ${r.titulo}`;
   const pts = (v) => `${formatNumber(v)} ${v === 1 ? "punto" : "puntos"}`;
   const cards = r.questions.map((q, i) => {
     // Con varios cuadros, solo el enunciado: cada cuadro se muestra debajo con su etiqueta.
@@ -1055,7 +1069,7 @@ function showReview(r, onBack = null) {
         "div",
         { class: `card review-q ${pending ? "pending" : ""}` },
         legend,
-        h("span", { class: `review-status ${pending ? "pending" : "ok"}` }, pending ? "Pendiente de corregir" : `${formatNumber(q.puntos)} de ${pts(q.valor)}`),
+        h("span", { class: `review-status ${pending ? "pending" : "ok"}` }, pending ? (r.practica ? "No se corrige en la práctica" : "Pendiente de corregir") : `${formatNumber(q.puntos)} de ${pts(q.valor)}`),
         h("p", { class: "muted small" }, "Tu respuesta:"),
         q.respuesta ? h("p", { class: "review-open" }, q.respuesta) : h("p", { class: "muted" }, "(en blanco)")
       );
@@ -1122,13 +1136,16 @@ function showReview(r, onBack = null) {
       h(
         "div",
         { class: "card" },
-        h("h1", {}, `Revisión: ${r.titulo}`),
+        h("h1", {}, `${r.practica ? "Resultado" : "Revisión"}: ${r.titulo}`),
+        r.practica ? h("p", { class: "muted small" }, "Examen de práctica: abajo tienes qué has hecho bien y mal, con las respuestas correctas. Puedes repetirlo las veces que quieras.") : null,
         h("p", { class: "muted" }, `${r.nombre} ${r.apellidos}`.trim()),
         hasNote
           ? [
               h("p", { class: "muted" }, pendingOpen ? "Nota provisional" : "Tu nota"),
               h("div", { class: "big-result" }, `${formatNumber(r.nota)} / 10`),
-              pendingOpen ? h("p", { class: "muted small" }, "Faltan preguntas abiertas por corregir: tu nota cambiará cuando tu profesor las corrija.") : null,
+              pendingOpen
+                ? h("p", { class: "muted small" }, r.practica ? "Las preguntas abiertas no se corrigen en la práctica: cuentan como 0 en esta nota." : "Faltan preguntas abiertas por corregir: tu nota cambiará cuando tu profesor las corrija.")
+                : null,
             ]
           : null,
         h(
@@ -1138,9 +1155,12 @@ function showReview(r, onBack = null) {
           h("span", { class: "review-status bad" }, `Errores: ${r.errores}`),
           h("span", { class: "review-status blank" }, `En blanco: ${r.blancos}`)
         ),
-        onBack ? h("div", { class: "actions" }, h("button", { type: "button", class: "btn secondary small", onclick: onBack }, "Volver")) : null
+        onBack ? h("div", { class: "actions" }, h("button", { type: "button", class: "btn secondary small", onclick: onBack }, "Volver")) : null,
+        // Práctica: se vuelve a la pantalla inicial con el examen vacío (el nombre ya está escrito).
+        r.practica ? retry() : null
       ),
-      cards
+      cards,
+      r.practica ? h("div", { class: "card" }, retry()) : null
     )
   );
 }
@@ -1166,6 +1186,7 @@ async function main() {
           salidas_permitidas: res.exam.salidas_permitidas,
           penalizacion: res.exam.penalizacion,
           pantalla_completa: res.exam.pantalla_completa,
+          practica: res.exam.practica,
         },
         res.exam
       );
