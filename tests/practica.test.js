@@ -81,3 +81,29 @@ test("un examen normal sigue igual: guarda la fila y no devuelve las soluciones"
   assert.ok(!JSON.stringify(res).includes("trióxido"));
   assert.equal(env.results(r.id).rows.length, 2);
 });
+
+test("convertir en práctica un examen ya hecho, y volver a examen, sin tocar las notas guardadas", () => {
+  const env = makeEnv();
+  const r = env.post({ action: "createExam", token: "secreto", titulo: "Real", control_salidas: true, preguntas: parseGift(GIFT) });
+  const id = r.id;
+  assert.equal(submit(env, id).ok, true);
+  assert.equal(env.results(id).rows.length, 2, "el examen real guarda su fila");
+
+  assert.equal(env.post({ action: "setPractice", token: "mal", id, practica: true }).error, "unauthorized");
+  assert.equal(env.post({ action: "setPractice", token: "secreto", id: "nada", practica: true }).error, "not_found");
+  assert.equal(env.post({ action: "setPractice", token: "secreto", id, practica: true }).practica, true);
+  assert.equal(env.get({ action: "list", token: "secreto" }).exams[0].practica, true);
+  assert.equal(env.get({ action: "exam", id }).exam.practica, true);
+
+  const res = plain(submit(env, id, { envioId: "e2" }));
+  assert.equal(res.practica, true);
+  assert.equal(res.review.questions[0].correcta, "a", "en práctica, la corrección al momento");
+  assert.equal(env.results(id).rows.length, 2, "la práctica no añade filas ni toca la nota guardada");
+
+  assert.equal(env.post({ action: "setPractice", token: "secreto", id, practica: false }).practica, false);
+  const ex = env.get({ action: "exam", id }).exam;
+  assert.deepEqual([ex.practica, ex.control_salidas], [false, true], "vuelve a ser examen, con su vigilancia");
+  assert.equal(plain(submit(env, id, { envioId: "e3", nombre: "Eva" })).review, undefined);
+  assert.equal(env.results(id).rows.length, 3);
+  assert.ok(env.get({ action: "version" }).funciones.includes("convertir_practica"));
+});

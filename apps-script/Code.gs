@@ -53,7 +53,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica', 'convertir_practica'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -92,6 +92,7 @@ function handlePost_(body) {
     case 'createExam': return createExam_(body);
     case 'setActive': return setActive_(body);
     case 'setReview': return setReview_(body);
+    case 'setPractice': return setPractice_(body);
     case 'review': return review_(body);
     case 'results': return results_(body);
     case 'grade': return grade_(body);
@@ -468,6 +469,12 @@ function setActive_(p) {
 }
 
 // Publica u oculta la revisión: con ella, cada alumno ve sus respuestas y las correctas.
+// Convierte un examen ya publicado en práctica, o lo devuelve a examen. Los envíos ya guardados no cambian; mientras
+// sea práctica no se guarda ninguno nuevo. La vigilancia que tuviera se conserva para cuando vuelva a ser examen.
+function setPractice_(p) {
+  return setExamFlag_(p, 'practica', p.practica);
+}
+
 function setReview_(p) {
   var res = setExamFlag_(p, 'revision', p.revision);
   if (res.ok) formatExamsSheet_(getExamsSheet_()); // da formato a la columna en hojas de versiones anteriores
