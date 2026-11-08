@@ -6,6 +6,11 @@ export const MAX_SHORT_CHARS = 200; // longitud máxima de la respuesta del alum
 export const MAX_SHORT_ANSWERS = 20; // respuestas aceptadas por pregunta
 
 const NUMBER = /^[+-]?\d+(?:[.,]\d+)?$/;
+// Respuesta numérica con margen: «12,5 ±2%» (relativo) o «12,5 ±0,3» (absoluto). También «+-» en vez de «±».
+const MARGIN = /^([+-]?\d+(?:[.,]\d+)?) ?(?:±|\+-|\+\/-) ?(\d+(?:[.,]\d+)?) ?(%?)$/;
+// Lo que escribe el alumno en una de margen: un número, y detrás, si quiere, la unidad («12,5 g/L», «0,5 M»).
+const NUMBER_UNIT = /^([+-]?\d+(?:[.,]\d+)?)(?: ?[\p{L}%°].*)?$/u;
+const toNumber = (s) => Number(s.replace(",", "."));
 const RUNS = /\p{L}+|[^\p{L}]+/gu; // tramos de letras y de lo demás: "hierro(III)" → hierro, (, III, )
 
 const ROMAN = /^[ivxlcdm]+$/i;
@@ -45,13 +50,30 @@ export function caseMatters(answer) {
   return runs.some((_, i) => runMattersAt(runs, i));
 }
 
+/** Margen de una respuesta numérica («12,5 ±2%») como {valor, margen, relativo}, o null si no lo es. */
+export function numericMargin(answer) {
+  const m = MARGIN.exec(shortKey(answer));
+  return m ? { valor: toNumber(m[1]), margen: toNumber(m[2]), relativo: m[3] === "%" } : null;
+}
+
+// ¿Está el número escrito dentro del margen? Se admite la unidad detrás del número.
+function withinMargin(margin, given) {
+  const m = NUMBER_UNIT.exec(shortKey(given));
+  if (!m) return false;
+  const tol = margin.relativo ? (Math.abs(margin.valor) * margin.margen) / 100 : margin.margen;
+  return Math.abs(toNumber(m[1]) - margin.valor) <= tol + 1e-9 * Math.max(1, Math.abs(margin.valor));
+}
+
 /**
  * ¿Coincide lo que ha escrito el alumno con alguna de las respuestas aceptadas? Las tildes no cuentan, y las
  * mayúsculas solo en los símbolos de las fórmulas: «oxido de hierro(iii)» vale por «óxido de hierro(III)», pero
- * «Co» no vale por «CO».
+ * «Co» no vale por «CO». Una respuesta con margen («12,5 ±2%») vale
+ * cualquier número dentro del margen, con o sin la unidad detrás.
  */
 export function shortAnswerMatches(accepted, given) {
   return (accepted || []).some((answer) => {
+    const margin = numericMargin(answer);
+    if (margin) return withinMargin(margin, given);
     const a = shortKey(answer);
     let b = shortKey(given);
     if (!a) return false;

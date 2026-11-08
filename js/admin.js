@@ -7,7 +7,8 @@ import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./
 import { collectImageRefs, matchImage, MAX_IMAGES, MAX_TOTAL_IMAGE_CHARS } from "./images.js";
 import { prepareImage } from "./image-encode.js";
 import { richNodes } from "./rich.js";
-import { caseMatters, blankLabels } from "./short.js";
+import { caseMatters, blankLabels, numericMargin } from "./short.js";
+import { convalidablePart, isConvalidable } from "./gift.js";
 import { showCorrection, exportNotes, exportGift } from "./correction.js";
 
 const TOKEN_KEY = "admin_token";
@@ -45,6 +46,7 @@ function errorText(e) {
 
 // Para la vista previa: si en las respuestas aceptadas cuentan las mayúsculas (fórmulas como NaCl) o no.
 function caseNote(answers) {
+  if (answers.some(numericMargin)) return " (número: vale cualquiera dentro del margen, con la unidad detrás o sin ella)";
   const strict = answers.filter(caseMatters);
   if (!strict.length) return " (dan igual las tildes y las mayúsculas)";
   if (strict.length === answers.length) return " (cuentan las mayúsculas de los símbolos; las tildes no)";
@@ -281,8 +283,8 @@ function showPanel(initialExams) {
           h(
             "div",
             { class: "actions" },
-            ex.n_abiertas || ex.n_cortas
-              ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, ex.n_abiertas ? "Corregir abiertas" : "Revisar respuestas cortas")
+            ex.n_abiertas || ex.n_cortas || ex.convalidable
+              ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, ex.n_abiertas ? "Corregir abiertas" : ex.n_cortas ? "Revisar respuestas cortas" : "Revisar convalidaciones")
               : null,
             exportBtn,
             giftBtn,
@@ -419,6 +421,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
     const pts = (list) => formatNumber(list.reduce((sum, q) => sum + questionValue(q), 0));
     const tests = questions.filter((q) => !isOpenQuestion(q) && !isShortQuestion(q));
     const shorts = questions.filter(isShortQuestion);
+    const part = convalidablePart(questions);
     preview.append(
       h("p", {}, h("strong", {}, `${questions.length} preguntas`), ` · ${size.toLocaleString("es-ES")} de 50 000 caracteres`),
       // Reparto de puntos: la nota final siempre es sobre 10 (puntos obtenidos / puntos totales × 10).
@@ -428,6 +431,9 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
         h("p", {}, h("strong", {}, "Reparto de puntos")),
         h("p", {}, `Test: ${tests.length} ${tests.length === 1 ? "pregunta" : "preguntas"} · ${pts(tests)} puntos.`),
         shorts.length ? h("p", {}, `Respuesta corta: ${shorts.length} ${shorts.length === 1 ? "pregunta" : "preguntas"} · ${pts(shorts)} puntos (se corrigen solas; los errores no restan).`) : null,
+        part
+          ? h("p", {}, `Parte convalidable${part.nombre ? ` (${part.nombre})` : ""}: ${part.n} ${part.n === 1 ? "pregunta" : "preguntas"} · ${formatNumber(part.puntos)} puntos. Al empezar, el alumno que la tenga convalidada lo marca: no ve esas preguntas y recibe sus puntos enteros. Lo verás en la columna «convalidada» de la hoja, y en la pestaña «Convalidaciones» de la corrección podrás quitárselo o dárselo.`)
+          : null,
         nOpen ? h("p", {}, `Abiertas: ${nOpen} ${nOpen === 1 ? "pregunta" : "preguntas"} · ${pts(questions.filter(isOpenQuestion))} puntos (las corriges tú en la hoja de Google).`) : null,
         h("p", {}, `Total: ${pts(questions)} puntos → la nota se calcula sobre 10.`)
       ),
@@ -439,7 +445,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
           h(
             "div",
             { class: "q-preview" },
-            h("div", { class: "q-text" }, h("strong", {}, `${i + 1}. `, q.title ? `[${q.title}] ` : ""), ...richNodes(q.text, imageMap()), h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}${isOpenQuestion(q) ? " · abierta" : isShortQuestion(q) ? " · respuesta corta" : ""}`)),
+            h("div", { class: "q-text" }, h("strong", {}, `${i + 1}. `, q.title ? `[${q.title}] ` : ""), ...richNodes(q.text, imageMap()), h("span", { class: "points-badge" }, `${formatNumber(questionValue(q))} ${questionValue(q) === 1 ? "punto" : "puntos"}${isOpenQuestion(q) ? " · abierta" : isShortQuestion(q) ? " · respuesta corta" : ""}${isConvalidable(q) ? " · convalidable" : ""}`)),
             isOpenQuestion(q)
               ? h("p", { class: "muted small" }, "Respuesta abierta: el alumno escribe en un cuadro de texto.")
               : isShortQuestion(q) && Array.isArray(q.huecos)
@@ -597,6 +603,8 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
       if (questions.some((q) => Array.isArray(q.huecos))) needs.push(["cuadros", "corregir preguntas con varios cuadros de respuesta"]);
       if (practica.input.checked) needs.push(["practica", "publicar exámenes de práctica"]);
       if (instrucciones.value.trim()) needs.push(["instrucciones", "mostrar instrucciones al alumno"]);
+      if (questions.some(isConvalidable)) needs.push(["convalidable", "usar una parte convalidable"]);
+      if (questions.some((q) => isShortQuestion(q) && q.respuestas.some(numericMargin))) needs.push(["margen", "corregir respuestas numéricas con margen"]);
       if (needs.length) {
         const v = await apiGet({ action: "version" });
         const missing = needs.find(([f]) => !v.ok || !Array.isArray(v.funciones) || !v.funciones.includes(f));

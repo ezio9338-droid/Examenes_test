@@ -10,6 +10,10 @@ export const MAX_VALUE = 100;
 
 // [valor=2] al principio del enunciado: lo que vale la pregunta. También [puntos=2] o [valor: 1/2].
 const VALUE_MARK = /^\[\s*(?:valor|puntos)\s*[=:]\s*([^\]]*?)\s*\]\s*/i;
+// [convalidable] o [convalidable=formulación]: la pregunta es de una parte que algunos alumnos tienen convalidada.
+// Quien la marca al empezar no ve esas preguntas y recibe sus puntos enteros. Va antes o después de [valor=…].
+const CONVALIDABLE_MARK = /^\[\s*convalidable\s*(?:[=:]\s*([^\]]*?)\s*)?\]\s*/i;
+export const MAX_PART_NAME = 40;
 
 /** "2", "0,5", "0.5" o "1/2" -> número mayor que 0; lanza un error si no es válido. */
 export function parseValue(raw, n) {
@@ -114,6 +118,22 @@ function acceptedAnswers(parts, n, where) {
   return respuestas;
 }
 
+// Marcas al principio del enunciado, en cualquier orden: [valor=N] y [convalidable=nombre].
+// convalidable: nombre de la parte convalidable ("" si no lo tiene) o null si no lo es.
+function leadingMarks(text, n) {
+  let valor = 1;
+  let convalidable = null;
+  let rest = text;
+  for (let mark; (mark = VALUE_MARK.exec(rest) || CONVALIDABLE_MARK.exec(rest)); ) {
+    if (/^\[\s*convalidable/i.test(mark[0])) {
+      convalidable = (mark[1] ?? "").replace(/\s+/g, " ").trim();
+      if (convalidable.length > MAX_PART_NAME) throw new Error(`Pregunta ${n}: el nombre de la parte convalidable supera los ${MAX_PART_NAME} caracteres.`);
+    } else valor = parseValue(mark[1], n);
+    rest = rest.slice(mark[0].length);
+  }
+  return { valor, convalidable, rest };
+}
+
 // Respuesta corta con varios cuadros: «Prefijos: {=…} Stock: {=…}». El texto que rodea a los bloques queda en el
 // enunciado, con la marca BLANK en el sitio de cada cuadro; sus respuestas aceptadas, en `huecos`.
 function parseMultiBlank(rest, blocks, title, n) {
@@ -122,13 +142,8 @@ function parseMultiBlank(rest, blocks, title, n) {
   }
   const segments = blocks.map((b, i) => rest.slice(i ? blocks[i - 1].close + 1 : 0, b.open));
   segments.push(rest.slice(blocks[blocks.length - 1].close + 1));
-  let valor = 1;
-  segments[0] = segments[0].replace(/^\s+/, "");
-  const mark = VALUE_MARK.exec(segments[0]);
-  if (mark) {
-    valor = parseValue(mark[1], n);
-    segments[0] = segments[0].slice(mark[0].length);
-  }
+  const { valor, convalidable, rest: first } = leadingMarks(segments[0].replace(/^\s+/, ""), n);
+  segments[0] = first;
   const huecos = blocks.map((b, i) => {
     const parts = splitOptions(rest.slice(b.open + 1, b.close));
     if (!parts.length || !parts.every((p) => p.correct)) {
@@ -140,7 +155,7 @@ function parseMultiBlank(rest, blocks, title, n) {
   });
   const text = segments.map(unescapeGift).join(BLANK).trim();
   if (!text.split(BLANK).join("").trim()) throw new Error(`Pregunta ${n}: el enunciado está vacío.`);
-  return { id: `q${n}`, title, text, options: [], correct: null, huecos, valor, tipo: "corta" };
+  return { id: `q${n}`, title, text, options: [], correct: null, huecos, valor, tipo: "corta", ...(convalidable === null ? {} : { convalidable }) };
 }
 
 function parseBlock(block, n) {
@@ -185,24 +200,23 @@ function parseBlock(block, n) {
 
   let before = rest.slice(0, open).trim();
   const after = rest.slice(close + 1).trim();
-  let valor = 1;
-  const mark = VALUE_MARK.exec(before);
-  if (mark) {
-    valor = parseValue(mark[1], n);
-    before = before.slice(mark[0].length).trim();
-  }
+  const marks = leadingMarks(before, n);
+  const { valor, convalidable } = marks;
+  before = marks.rest.trim();
+  const conv = convalidable === null ? {} : { convalidable };
   const text = unescapeGift([before, after].filter(Boolean).join(" ").trim());
   if (!text) throw new Error(`Pregunta ${n}: el enunciado está vacío.`);
 
   // Llaves vacías = pregunta abierta (el alumno escribe la respuesta y la corrige el profesor).
   if (rest.slice(open + 1, close).trim() === "") {
+    if (convalidable !== null) throw new Error(`Pregunta ${n}: una pregunta abierta no puede ser convalidable (solo las de test y las de respuesta corta).`);
     return { id: `q${n}`, title, text, options: [], correct: null, valor, tipo: "abierta" };
   }
 
   const parts = splitOptions(rest.slice(open + 1, close));
   // Solo respuestas con = (ninguna ~): respuesta corta, se corrige sola comparando con las aceptadas.
   if (parts.length && parts.every((p) => p.correct)) {
-    return { id: `q${n}`, title, text, options: [], correct: null, respuestas: acceptedAnswers(parts, n, ""), valor, tipo: "corta" };
+    return { id: `q${n}`, title, text, options: [], correct: null, respuestas: acceptedAnswers(parts, n, ""), valor, tipo: "corta", ...conv };
   }
   if (parts.length < 2) {
     throw new Error(`Pregunta ${n}: necesita al menos 2 opciones (tiene ${parts.length}).`);
@@ -225,7 +239,7 @@ function parseBlock(block, n) {
 
   const options = parsed.map((o, i) => ({ id: LETTERS[i], text: o.text }));
   const correct = options[parsed.findIndex((o) => o.correct)].id;
-  return { id: `q${n}`, title, text, options, correct, valor, tipo: "test" };
+  return { id: `q${n}`, title, text, options, correct, valor, tipo: "test", ...conv };
 }
 
 /**
@@ -268,7 +282,25 @@ export function parseGift(input) {
   });
 
   if (errors.length) throw new GiftError(errors);
+  const parts = new Set(questions.filter(isConvalidable).map((q) => q.convalidable));
+  if (parts.size > 1) {
+    throw new GiftError([`Solo puede haber una parte convalidable y hay ${parts.size}: ${[...parts].map((p) => `«${p || "sin nombre"}»`).join(", ")}. Usa el mismo nombre en todas sus preguntas.`]);
+  }
+  if (parts.size && questions.every(isConvalidable)) {
+    throw new GiftError(["Todas las preguntas son convalidables: al menos una tiene que ser para todos."]);
+  }
   return questions;
+}
+
+/** ¿Es de la parte convalidable? (su nombre puede estar vacío) */
+export const isConvalidable = (q) => typeof q?.convalidable === "string";
+
+/** La parte convalidable de un examen: {nombre, n, puntos}, o null si no tiene. */
+export function convalidablePart(questions) {
+  const qs = (questions ?? []).filter(isConvalidable);
+  if (!qs.length) return null;
+  const v = (q) => (Number.isFinite(Number(q.valor)) && Number(q.valor) > 0 ? Number(q.valor) : 1);
+  return { nombre: qs[0].convalidable, n: qs.length, puntos: Math.round(qs.reduce((s, q) => s + v(q), 0) * 10000) / 10000 };
 }
 
 /* ------------------------------ exportación ------------------------------ */
@@ -298,13 +330,14 @@ export function toGift(questions, comment = "") {
     const text = escapeGift(q.text);
     // Un enunciado sin título que empezara por // se leería como comentario: la marca de valor lo evita.
     const mark = valueMark(q.valor) || (!title && text.startsWith("//") ? "[valor=1] " : "");
-    const head = `${title}${mark}${text}`;
+    const conv = isConvalidable(q) ? `[convalidable${q.convalidable ? `=${q.convalidable.replace(/[\]\n]/g, " ")}` : ""}] ` : "";
+    const head = `${title}${mark}${conv}${text}`;
     if (q.tipo === "abierta") return `${head}{}`;
     const answersBlock = (list) => `{${(list ?? []).map((r) => `=${escapeGift(r)}`).join(" ")}}`;
     if (q.tipo === "corta" && Array.isArray(q.huecos)) {
       // Varios cuadros: cada marca del enunciado vuelve a ser su bloque { … }.
       const parts = String(q.text ?? "").split(BLANK);
-      return `${title}${mark}${parts.map((p, i) => escapeGift(p) + (i < q.huecos.length ? answersBlock(q.huecos[i]) : "")).join("")}`;
+      return `${title}${mark}${conv}${parts.map((p, i) => escapeGift(p) + (i < q.huecos.length ? answersBlock(q.huecos[i]) : "")).join("")}`;
     }
     if (q.tipo === "corta") return `${head}${answersBlock(q.respuestas)}`;
     const options = q.options.map((o) => `${o.id === q.correct ? "=" : "~"}${escapeGift(o.text)}`);
