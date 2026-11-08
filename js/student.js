@@ -8,6 +8,7 @@ import { richNodes } from "./rich.js";
 import { normalize, seededShuffle, formatClock, penaltyFraction, formatNumber, newSendId } from "./util.js";
 import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./grading.js";
 import { MAX_SHORT_CHARS } from "./short.js";
+import { convalidablePart, isConvalidable } from "./gift.js";
 
 const MAX_OPEN_CHARS = 4000;
 
@@ -175,11 +176,15 @@ function showStart(info, exam) {
   const apellidos = h("input", { name: "apellidos", maxlength: MAX_TEXT, autocomplete: "family-name", required: true });
   const grupo = h("input", { name: "grupo", maxlength: MAX_TEXT, required: true });
   const code = h("input", { name: "code", autocomplete: "off", autocapitalize: "off" });
+  // Parte convalidable (p. ej. formulación): el alumno que la tiene convalidada lo marca y no ve esas preguntas.
+  const part = info.convalidable ?? convalidablePart(exam?.questions);
+  const convalidada = h("input", { type: "checkbox", name: "convalidada" });
   if (last) {
     nombre.value = last.nombre ?? "";
     apellidos.value = last.apellidos ?? "";
     grupo.value = last.grupo ?? "";
     code.value = last.code ?? "";
+    convalidada.checked = Boolean(last.convalidada);
   }
   const button = h("button", { class: "btn block", type: "submit" }, "Empezar el examen");
 
@@ -198,6 +203,18 @@ function showStart(info, exam) {
     h("label", { class: "field" }, h("span", {}, "Grupo"), grupo, h("small", { class: "hint" }, "Por ejemplo: 2º A")),
     needsCode
       ? h("label", { class: "field" }, h("span", {}, "Código de acceso"), code, h("small", { class: "hint" }, "Te lo da tu profesor."))
+      : null,
+    part
+      ? h(
+          "div",
+          { class: "notice info" },
+          h("label", { class: "check" }, convalidada, h("strong", {}, `Tengo convalidada ${partLabel(part)}`)),
+          h(
+            "p",
+            { class: "small" },
+            `Márcalo solo si es tu caso. No verás ${part.n === 1 ? "esa pregunta" : `esas ${part.n} preguntas`} y se te ${part.puntos === 1 ? "dará" : "darán"} ${part.n === 1 ? "su" : "sus"} ${pointsText(part.puntos)} enteros. Tu profesor lo comprobará.`
+          )
+        )
       : null,
     errBox,
     button
@@ -230,7 +247,7 @@ function showStart(info, exam) {
         if (!res.ok) return fail(res.message || "No se ha podido abrir el examen.");
         loaded = res.exam;
       }
-      startExam(loaded, { nombre: n, apellidos: a, grupo: g, code: c });
+      startExam(loaded, { nombre: n, apellidos: a, grupo: g, code: c, convalidada: Boolean(part) && convalidada.checked });
     } catch (e) {
       fail(errorText(e));
     } finally {
@@ -277,6 +294,10 @@ function errorText(e) {
   return "Ha ocurrido un error inesperado.";
 }
 
+// «la parte de formulación» o, si no tiene nombre, «la parte convalidable».
+const partLabel = (part) => (part?.nombre ? `la parte de ${part.nombre}` : "la parte convalidable");
+const pointsText = (v) => `${formatNumber(v)} ${v === 1 ? "punto" : "puntos"}`;
+
 /* ------------------------------- examen --------------------------------- */
 
 function startExam(exam, who) {
@@ -296,12 +317,15 @@ function startExam(exam, who) {
   progress.desconexiones = Number(progress.desconexiones) || 0;
   progress.segundosSinConexion = Number(progress.segundosSinConexion) || 0;
   progress.offlineSince = progress.offlineSince || null;
+  // Lo que marque al empezar (o al continuar) manda: puede corregirlo si se equivocó.
+  progress.convalidada = Boolean(who.convalidada) && exam.questions.some(isConvalidable);
   store.set(key, JSON.stringify(progress));
   store.set(lastKey(), JSON.stringify(who));
 
   // Orden fijo por alumno: la semilla depende del examen, el nombre, los apellidos y el grupo.
   const seed = `${examId}|${normalize(who.apellidos)}|${normalize(who.nombre)}|${normalize(who.grupo)}`;
-  let questions = exam.questions.map((q) => ({ ...q }));
+  // Con la parte convalidada, sus preguntas no se muestran.
+  let questions = exam.questions.filter((q) => !(progress.convalidada && isConvalidable(q))).map((q) => ({ ...q }));
   if (exam.barajar_preguntas) questions = seededShuffle(questions, `${seed}|q`);
   if (exam.barajar_opciones) {
     questions = questions.map((q) => (isOpenQuestion(q) ? q : { ...q, options: seededShuffle(q.options, `${seed}|o|${q.id}`) }));
@@ -530,6 +554,7 @@ function renderExam(session) {
     const respuestas = {};
     const abiertas = {};
     for (const q of exam.questions) {
+      if (progress.convalidada && isConvalidable(q)) continue;
       if (isOpenQuestion(q)) abiertas[q.id] = (progress.open[q.id] ?? "").slice(0, MAX_OPEN_CHARS);
       else if (isShortQuestion(q)) respuestas[q.id] = String(progress.answers[q.id] ?? "").trim().slice(0, MAX_SHORT_CHARS) || null;
       else respuestas[q.id] = progress.answers[q.id] ?? null;
@@ -542,6 +567,7 @@ function renderExam(session) {
       code: who.code,
       respuestas,
       abiertas,
+      convalidada: progress.convalidada,
       pegados: progress.pegados,
       duracion_min: Math.round(((Date.now() - progress.startedAt) / 60000) * 100) / 100,
       salidas: progress.salidas,
@@ -840,6 +866,9 @@ function renderExam(session) {
     bar,
     // Instrucciones del profesor, al principio del examen (texto plano, con sus saltos de línea).
     exam.instrucciones ? h("div", { class: "notice info exam-instructions" }, h("p", {}, h("strong", {}, "Instrucciones")), h("p", {}, exam.instrucciones)) : null,
+    progress.convalidada
+      ? h("div", { class: "notice info" }, h("p", {}, `Has indicado que tienes convalidada ${partLabel(convalidablePart(exam.questions))}: no ves sus preguntas y tienes sus ${pointsText(convalidablePart(exam.questions).puntos)}. Si no es así, avisa a tu profesor.`))
+      : null,
     fieldset,
     reviewBtn,
     h("p", { class: "muted small" }, "Tus respuestas se guardan automáticamente en este dispositivo."),
@@ -980,6 +1009,9 @@ function showReview(r, onBack = null) {
   const pts = (v) => `${formatNumber(v)} ${v === 1 ? "punto" : "puntos"}`;
   const cards = r.questions.map((q, i) => {
     const legend = h("p", { class: "review-qtext" }, h("span", { class: "qnum" }, `${i + 1}.`), ...richNodes(q.text, r.imagenes));
+    if (q.convalidada) {
+      return h("div", { class: "card review-q ok" }, legend, h("span", { class: "review-status ok" }, `Convalidada · ${pts(q.valor)}`));
+    }
     if (q.tipo === "abierta") {
       const pending = q.puntos === null || q.puntos === undefined;
       return h(
@@ -1049,7 +1081,8 @@ function showReview(r, onBack = null) {
           { class: "review-summary" },
           h("span", { class: "review-status ok" }, `Aciertos: ${r.aciertos}`),
           h("span", { class: "review-status bad" }, `Errores: ${r.errores}`),
-          h("span", { class: "review-status blank" }, `En blanco: ${r.blancos}`)
+          h("span", { class: "review-status blank" }, `En blanco: ${r.blancos}`),
+          r.convalidada ? h("span", { class: "review-status ok" }, `Convalidada ${partLabel(r.convalidada)}`) : null
         ),
         onBack ? h("div", { class: "actions" }, h("button", { type: "button", class: "btn secondary small", onclick: onBack }, "Volver")) : null
       ),

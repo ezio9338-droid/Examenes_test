@@ -139,6 +139,34 @@ Cuentan como las de test (acierto, error o en blanco) y suman sus puntos, pero *
 
 En la revisión, el alumno ve lo que escribió y, si falló, la respuesta correcta. En ese cuadro tampoco se puede pegar texto. Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
 
+**Respuestas numéricas con margen.** En un problema (concentraciones, masas, volúmenes…) cada alumno redondea a su manera. Para no tener que prever cada número, escribe la respuesta aceptada con un margen detrás:
+
+```
+::D01::[valor=0,5] Concentración de la disolución en g/L. Escribe solo el número.{=120 ±2%}
+
+::D02::¿Cuántos mL del bote hay que tomar?{=4,15 ±0,05}
+```
+
+- `±2%` es un margen **relativo** (2 % del valor: de 117,6 a 122,4); `±0,05` es **absoluto** (de 4,10 a 4,20). También vale escribir `+-` en lugar de `±`.
+- Vale cualquier número dentro del margen, con coma o con punto, **y con la unidad detrás o sin ella** («120», «119,5 g/L», «4,1 mL»). Lo que no empiece por un número no vale. El alumno no debe usar separador de miles («1.000» se lee como 1).
+- Elige el margen para que los errores típicos queden fuera: por ejemplo, olvidar la riqueza del bote cambia el resultado un 5 %, así que con ±2 % no se da por buena.
+- Sin margen (`{=120}`) todo sigue como antes: el número tiene que ser exactamente ese y sin unidad.
+- Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
+
+**Parte convalidable (por ejemplo, formulación).** Si algunos alumnos tienen convalidada una parte del examen, marca sus preguntas con `[convalidable=nombre]` al principio del enunciado (antes o después de `[valor=N]`):
+
+```
+::F01::[valor=0,1][convalidable=formulación] Escribe la fórmula del óxido de hierro(III).{=Fe2O3}
+```
+
+- En la portada del examen aparece la casilla **«Tengo convalidada la parte de formulación»**, con cuántas preguntas y puntos son. Quien la marca **no ve esas preguntas** y recibe **sus puntos enteros**; los demás las contestan con normalidad. El alumno que se equivoque puede cambiarlo al volver a entrar, antes de enviar.
+- En la hoja de resultados aparece la columna **`convalidada`** («sí» en azul), junto a la nota, y en el CSV de notas la columna «Convalidada».
+- **Compruébalo tú:** en «Mis exámenes», el botón de corrección tiene al final la pestaña **Convalidaciones**, con cada alumno y su estado. **Quitar convalidación** le deja esas preguntas en blanco (no las vio) y **Dar por convalidada** le da sus puntos (y se ignora lo que contestó en ellas). La nota se recalcula al momento, en la hoja y en la revisión.
+- Las preguntas convalidadas no cuentan como aciertos, errores ni en blanco. En la revisión, el alumno las ve como «Convalidada», sin la solución.
+- Solo puede haber **una** parte convalidable por examen (el mismo nombre en todas sus preguntas), solo con preguntas de test y de respuesta corta (no abiertas), y no puede serlo el examen entero.
+- Si el examen tiene parte convalidable, **no barajes las preguntas** (para que quede junta, al final). Las opciones sí puedes barajarlas.
+- Requiere `Code.gs` actualizado; si no lo está, el panel lo detecta y **no publica** el examen.
+
 **Instrucciones para el alumno.** Al publicar puedes escribir unas instrucciones (hasta 2 000 caracteres, con saltos de línea) en «Instrucciones para el alumno». Se muestran en un recuadro al principio del examen, encima de la primera pregunta, cuando el alumno ya ha empezado. Son útiles con las preguntas de respuesta corta para explicar cómo escribir las respuestas (números romanos en mayúsculas, subíndices como números normales…). Se guardan en la columna `instrucciones` de la pestaña `Examenes`. Requiere `Code.gs` actualizado.
 
 **Corregir las abiertas (en el panel, no en la hoja).** En «Mis exámenes», el examen con preguntas abiertas tiene el botón **Corregir abiertas** (en la misma pantalla están también las de respuesta corta, detrás de las abiertas). Se corrige **pregunta por pregunta**: arriba eliges la pregunta (con cuántas llevas corregidas), y debajo ves la respuesta de cada alumno en una caja grande y legible, con su grupo y, si los hubo, los intentos de pegar. Escribes los puntos (de 0 al máximo; acepta coma decimal) o pulsas **0**, **½** o **Máximo**, y se guardan solos al pulsar Intro o salir del campo; Intro salta al siguiente alumno. «Mostrar solo las sin corregir» te deja ver lo que falta.
@@ -187,6 +215,10 @@ REGLAS DEL FORMATO (obligatorias):
    PREGUNTAS DE RESPUESTA CORTA (una palabra, número o fórmula que se corrige sola): dentro de las llaves SOLO respuestas aceptadas con =, sin ninguna ~, en una línea. Pon todas las formas válidas. Escribe las palabras en minúsculas y con su ortografía correcta (tildes incluidas), y las fórmulas con sus mayúsculas exactas. Ejemplos:
    ::C01::Escribe la fórmula del cloruro de sodio.{=NaCl}
    ::C02::¿Cómo se llama el compuesto NaCl?{=cloruro de sodio =cloruro sódico}
+   RESPUESTAS NUMÉRICAS (problemas): una sola respuesta aceptada con margen detrás, relativo (±2%) o absoluto (±0,05), y pide en el enunciado «Escribe solo el número». Ejemplo:
+   ::D01::[valor=0.5] Disolvemos 30 g de azúcar hasta 250 mL de disolución. ¿Concentración en g/L? Escribe solo el número.{=120 ±2%}
+   PARTE CONVALIDABLE (solo si te lo pido): marca sus preguntas con [convalidable=nombre] justo después de [valor=N], con el mismo nombre en todas. Ejemplo:
+   ::F01::[valor=0.1][convalidable=formulación] Escribe la fórmula del óxido de hierro(III).{=Fe2O3}
 8. Para escribir los caracteres : = ~ # { } dentro de un texto, ponles delante una barra invertida (\= \{ \}...). Evita fórmulas en LaTeX; escribe las fórmulas con texto simple (v = d/t, 3x^2).
 9. Imágenes (solo en el enunciado, no en opciones): ![descripción](nombre.png) con un nombre de archivo simple, sin carpetas ni http. Solo si yo te indico qué imágenes hay.
 10. Títulos ::P01::, ::P02::... correlativos (A01, A02... para abiertas; C01, C02... para respuesta corta). Los comentarios empiezan por //.

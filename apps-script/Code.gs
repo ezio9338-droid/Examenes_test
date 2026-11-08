@@ -40,6 +40,7 @@ const MAX_OPEN_CHARS = 4000;  // longitud máxima de una respuesta abierta
 const MAX_INSTRUCTIONS = 2000; // instrucciones del examen para el alumno
 const MAX_SHORT_CHARS = 200;  // longitud máxima de una respuesta corta (y de cada respuesta aceptada)
 const MAX_SHORT_ANSWERS = 20; // respuestas aceptadas por pregunta de respuesta corta
+const MAX_PART_NAME = 40;     // nombre de la parte convalidable (p. ej. «formulación»)
 
 // Imágenes de los enunciados: ![descripción](archivo.png). Se guardan troceadas en la hoja "Imagenes".
 const SHEET_IMAGES = 'Imagenes';
@@ -51,7 +52,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'convalidable', 'margen'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -93,6 +94,7 @@ function handlePost_(body) {
     case 'review': return review_(body);
     case 'results': return results_(body);
     case 'grade': return grade_(body);
+    case 'convalidate': return convalidate_(body);
     case 'exportExam': return exportExam_(body);
     default: return fail_('bad_request', 'Acción no reconocida.');
   }
@@ -130,6 +132,7 @@ function getExam_(params) {
     titulo: exam.titulo,
     n_preguntas: questions.length,
     n_cortas: questions.filter(isShort_).length,
+    convalidable: convalidablePart_(questions),
     tiempo_min: exam.tiempo_min,
     requiere_codigo: exam.codigo_acceso !== '',
     control_salidas: exam.control_salidas,
@@ -170,6 +173,7 @@ function getExam_(params) {
           text: q.text,
           tipo: questionType_(q), // nunca las respuestas aceptadas de las de respuesta corta
           valor: questionValue_(q),
+          convalidable: isConvalidable_(q) ? q.convalidable : undefined,
           options: (q.options || []).map(function (o) { return { id: o.id, text: o.text }; })
         };
       })
@@ -241,12 +245,17 @@ function submit_(p) {
     }
   }
   var pegados = clampNumber_(p.pegados, 9999, 0);
+  // Parte convalidable: lo dice el alumno al empezar (el profesor lo comprueba y puede quitarlo en el panel).
+  // Sus preguntas no se le muestran: lo que llegue de ellas se descarta.
+  var convalidada = toBool_(p.convalidada) && questions.some(isConvalidable_);
+  if (convalidada) questions.forEach(function (q) { if (isConvalidable_(q)) delete answers[q.id]; });
 
   var result;
   try {
     result = gradeExam_(questions, answers, {
       allowNegative: exam.permitir_negativa,
-      penalty: exam.penalizacion ? parsePenalty_(exam.penalizacion) : null
+      penalty: exam.penalizacion ? parsePenalty_(exam.penalizacion) : null,
+      convalidada: convalidada
     });
   } catch (err) {
     return fail_('invalid_answers', 'Las respuestas no corresponden a este examen.');
@@ -315,6 +324,7 @@ function submit_(p) {
         salidas: salidas, segundos_fuera: segundosFuera, tipo_envio: tipoEnvio, envio_id: envioId,
         motivos_salida: motivos, desconexiones: desconexiones, segundos_sin_conexion: segundosSinConexion,
         puntos_test: result.puntosTest, puntos_total: result.puntosTotal, pegados: pegados,
+        convalidada: convalidada ? 'sí' : '',
         pendientes: result.abiertas // preguntas abiertas sin corregir; la nota es la del test hasta que se corrija
       };
       var openQs = questions.filter(isOpen_);
@@ -348,6 +358,7 @@ function submit_(p) {
     out.aciertos = result.aciertos;
     out.errores = result.errores;
     out.blancos = result.blancos;
+    if (convalidada) out.convalidadas = result.convalidadas;
   }
   return out;
 }
@@ -498,9 +509,15 @@ function review_(p) {
       apellidos: String(get('apellidos')),
       nota: finalGrade_(exam, openQs, questions, row, H),
       aciertos: get('aciertos'), errores: get('errores'), blancos: get('blancos'),
+      convalidada: isConvalidated_(row, H) ? convalidablePart_(questions) : null,
       imagenes: loadImages_(exam.id, questions),
       questions: questions.map(function (q) {
         var base = { id: q.id, text: q.text, valor: questionValue_(q) };
+        if (isConvalidable_(q) && isConvalidated_(row, H)) {
+          base.tipo = questionType_(q);
+          base.convalidada = true; // no la vio: ni su respuesta ni la solución
+          return base;
+        }
         if (isOpen_(q)) {
           var c = openColumns_(q, questions);
           var pts = H[c.pts] === undefined ? '' : row[H[c.pts]];
@@ -548,6 +565,7 @@ function listExams_(params) {
       n_preguntas: JSON.parse(ex.preguntas_json).length,
       n_abiertas: JSON.parse(ex.preguntas_json).filter(isOpen_).length,
       n_cortas: JSON.parse(ex.preguntas_json).filter(isShort_).length,
+      convalidable: convalidablePart_(JSON.parse(ex.preguntas_json)),
       envios: sh ? Math.max(0, sh.getLastRow() - 1) : 0,
       creado: ex.creado,
       results_url: sh ? ss.getUrl() + '#gid=' + sh.getSheetId() : ss.getUrl()
@@ -611,6 +629,7 @@ function results_(p) {
       desconexiones: Number(get('desconexiones')) || 0,
       segundos_sin_conexion: Number(get('segundos_sin_conexion')) || 0,
       pegados: Number(get('pegados')) || 0,
+      convalidada: isConvalidated_(r, H),
       fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
       nota: finalGrade_(exam, openQs, questions, r, H),
       pendientes: openQs.filter(function (q) { return abiertas[q.id].puntos === null; }).length,
@@ -622,8 +641,10 @@ function results_(p) {
     ok: true,
     exam: {
       id: exam.id, titulo: exam.titulo,
+      convalidable: convalidablePart_(questions),
       preguntas: questions.map(function (q, i) {
         var out = { id: q.id, n: i + 1, title: q.title, text: q.text, tipo: questionType_(q), valor: questionValue_(q) };
+        if (isConvalidable_(q)) out.convalidable = q.convalidable;
         if (isShort_(q)) out.respuestas = q.respuestas.slice(); // solo con el token del profesor
         return out;
       }),
@@ -726,7 +747,8 @@ function gradeShort_(p, exam, questions, q) {
       var result = gradeExam_(questions, answers, {
         allowNegative: exam.permitir_negativa,
         penalty: exam.penalizacion ? parsePenalty_(exam.penalizacion) : null,
-        shortOverrides: manual
+        shortOverrides: manual,
+        convalidada: isConvalidated_(row, H)
       });
       var json = Object.keys(manual).length ? JSON.stringify(manual) : '';
       var set = function (name, value) {
@@ -747,6 +769,65 @@ function gradeShort_(p, exam, questions, q) {
         ok: true, correcta: correcta, acertada: shortCorrect_(q, answers[q.id], manual),
         aciertos: result.aciertos, errores: result.errores, nota: nota
       };
+    }
+    return fail_('not_found', 'No se ha encontrado ese envío.');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ¿Tiene convalidada la parte convalidable el alumno de esta fila?
+function isConvalidated_(row, H) {
+  return H.convalidada !== undefined && /^(s[ií]|true|verdadero|1|x)$/i.test(String(row[H.convalidada]).trim());
+}
+
+// Da o quita la parte convalidable a un envío (el profesor comprueba lo que marcó el alumno). Recalcula la nota.
+// Si se la quita, las preguntas de esa parte cuentan en blanco: el alumno no las vio.
+function convalidate_(p) {
+  var auth = checkToken_(p.token);
+  if (auth) return auth;
+  var exam = findExam_(p.examId);
+  if (!exam) return fail_('not_found', 'Este examen no existe.');
+  var questions = JSON.parse(exam.preguntas_json);
+  if (!questions.some(isConvalidable_)) return fail_('invalid_grade', 'Este examen no tiene parte convalidable.');
+  if (typeof p.convalidada !== 'boolean') return fail_('invalid_grade', 'Indica si la parte está convalidada o no.');
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (err) {
+    return fail_('busy', 'El servidor está ocupado. Inténtalo de nuevo en unos segundos.');
+  }
+  try {
+    var sh = getResultsSheet_(exam, questions);
+    var rows = sh.getDataRange().getValues();
+    var H = headerMap_(rows[0].map(String));
+    if (H.convalidada === undefined || H.envio_id === undefined) return fail_('invalid_grade', 'La hoja de este examen no admite convalidaciones.');
+    for (var i = 1; i < rows.length; i++) {
+      var row = rows[i];
+      if (String(row[H.envio_id]) !== String(p.envioId)) continue;
+      var answers = {};
+      try { answers = JSON.parse(String(row[H.respuestas_json] || '{}')) || {}; } catch (err) { answers = {}; }
+      var result = gradeExam_(questions, answers, {
+        allowNegative: exam.permitir_negativa,
+        penalty: exam.penalizacion ? parsePenalty_(exam.penalizacion) : null,
+        shortOverrides: shortOverrides_(row, H),
+        convalidada: p.convalidada
+      });
+      var set = function (name, value) {
+        if (H[name] === undefined) return;
+        row[H[name]] = value;
+        sh.getRange(i + 1, H[name] + 1).setValue(value);
+      };
+      set('convalidada', p.convalidada ? 'sí' : '');
+      set('aciertos', result.aciertos);
+      set('errores', result.errores);
+      set('blancos', result.blancos);
+      set('puntos_test', result.puntosTest);
+      set('nota', result.nota);
+      var openQs = questions.filter(isOpen_);
+      var nota = finalGrade_(exam, openQs, questions, row, H);
+      if (openQs.length && nota !== '') set('nota', nota);
+      return { ok: true, convalidada: p.convalidada, aciertos: result.aciertos, errores: result.errores, blancos: result.blancos, nota: nota };
     }
     return fail_('not_found', 'No se ha encontrado ese envío.');
   } finally {
@@ -788,6 +869,19 @@ function shortCorrect_(q, given, overrides) {
   return typeof overrides[q.id] === 'boolean' ? overrides[q.id] : shortAnswerMatches_(q.respuestas, given);
 }
 
+// De la parte convalidable (quien la tiene convalidada recibe sus puntos sin contestarla).
+function isConvalidable_(q) {
+  return !!q && typeof q.convalidable === 'string';
+}
+
+// La parte convalidable de un examen: {nombre, n, puntos}, o null si no tiene.
+function convalidablePart_(questions) {
+  var qs = (questions || []).filter(isConvalidable_);
+  if (!qs.length) return null;
+  var puntos = qs.reduce(function (s, q) { return s + questionValue_(q); }, 0);
+  return { nombre: qs[0].convalidable, n: qs.length, puntos: Math.round(puntos * 10000) / 10000 };
+}
+
 function questionType_(q) {
   return isOpen_(q) ? 'abierta' : isShort_(q) ? 'corta' : 'test';
 }
@@ -796,16 +890,22 @@ function gradeExam_(questions, answers, opts) {
   var allowNegative = !!(opts && opts.allowNegative);
   var penalty = (opts && opts.penalty) || null; // {num, den}: fracción de punto por error; null = 1/(opciones-1)
   var manual = (opts && opts.shortOverrides) || {}; // respuesta corta corregida a mano: id -> true/false
+  var convalidada = !!(opts && opts.convalidada); // parte convalidable: suma sus puntos sin contestarla
   if (!questions.length) throw new Error('El examen no tiene preguntas.');
 
   var aciertos = 0, errores = 0, blancos = 0, penalizacion = 0;
-  var valorAciertos = 0, valorErrores = 0, puntosTestMax = 0, puntosTotal = 0, abiertas = 0;
+  var valorAciertos = 0, valorErrores = 0, puntosTestMax = 0, puntosTotal = 0, abiertas = 0, convalidadas = 0;
 
   questions.forEach(function (q) {
     var valor = questionValue_(q);
     puntosTotal += valor;
     if (isOpen_(q)) { abiertas++; return; }
     puntosTestMax += valor;
+    if (convalidada && isConvalidable_(q)) {
+      convalidadas++;
+      valorAciertos += valor;
+      return;
+    }
     var given = answers ? answers[q.id] : undefined;
     if (isShort_(q)) {
       if (given !== undefined && given !== null && typeof given !== 'string') {
@@ -847,7 +947,7 @@ function gradeExam_(questions, answers, opts) {
   var puntosTest = round2(!allowNegative && puntos < 0 ? 0 : puntos);
 
   return { aciertos: aciertos, errores: errores, blancos: blancos, puntos: puntos, puntosTest: puntosTest,
-    puntosTestMax: round2(puntosTestMax), puntosTotal: round2(puntosTotal), abiertas: abiertas, nota: nota };
+    puntosTestMax: round2(puntosTestMax), puntosTotal: round2(puntosTotal), abiertas: abiertas, convalidadas: convalidadas, nota: nota };
 }
 
 /* ------------------------------------------------------------------ */
@@ -877,9 +977,25 @@ function shortKey_(text) {
     .trim();
 }
 
+// Margen de una respuesta numérica («12,5 ±2%» relativo, «12,5 ±0,3» absoluto) o null si no lo es.
+function numericMargin_(answer) {
+  var m = /^([+-]?\d+(?:[.,]\d+)?) ?(?:±|\+-|\+\/-) ?(\d+(?:[.,]\d+)?) ?(%?)$/.exec(shortKey_(answer));
+  return m ? { valor: Number(m[1].replace(',', '.')), margen: Number(m[2].replace(',', '.')), relativo: m[3] === '%' } : null;
+}
+
+// ¿Está el número escrito dentro del margen? Se admite la unidad detrás del número («12,5 g/L»).
+function withinMargin_(margin, given) {
+  var m = /^([+-]?\d+(?:[.,]\d+)?)(?: ?[\p{L}%°].*)?$/u.exec(shortKey_(given));
+  if (!m) return false;
+  var tol = margin.relativo ? Math.abs(margin.valor) * margin.margen / 100 : margin.margen;
+  return Math.abs(Number(m[1].replace(',', '.')) - margin.valor) <= tol + 1e-9 * Math.max(1, Math.abs(margin.valor));
+}
+
 function shortAnswerMatches_(accepted, given) {
   var number = /^[+-]?\d+(?:[.,]\d+)?$/;
   return (accepted || []).some(function (answer) {
+    var margin = numericMargin_(answer);
+    if (margin) return withinMargin_(margin, given);
     var a = shortKey_(answer);
     var b = shortKey_(given);
     if (!a) return false;
@@ -1168,7 +1284,8 @@ function validateQuestions_(qs) {
   if (!Array.isArray(qs) || qs.length === 0) throw new Error('El examen no tiene preguntas.');
   if (qs.length > MAX_QUESTIONS) throw new Error('Demasiadas preguntas (máximo ' + MAX_QUESTIONS + ').');
   var seen = {};
-  return qs.map(function (q, i) {
+  var partName = null;
+  var out = qs.map(function (q, i) {
     var n = i + 1;
     if (!q || typeof q.id !== 'string' || !q.id || seen[q.id]) {
       throw new Error('Pregunta ' + n + ': identificador no válido o repetido.');
@@ -1182,6 +1299,16 @@ function validateQuestions_(qs) {
     }
     valor = Math.round(valor * 10000) / 10000;
     var title = typeof q.title === 'string' ? q.title.trim() : '';
+    var conv = {}; // parte convalidable: solo preguntas de test y de respuesta corta, todas con el mismo nombre
+    if (q.convalidable !== undefined && q.convalidable !== null) {
+      if (typeof q.convalidable !== 'string' || q.convalidable.trim().length > MAX_PART_NAME) {
+        throw new Error('Pregunta ' + n + ': nombre de la parte convalidable no válido.');
+      }
+      if (q.tipo === 'abierta') throw new Error('Pregunta ' + n + ': una pregunta abierta no puede ser convalidable.');
+      conv.convalidable = q.convalidable.replace(/\s+/g, ' ').trim();
+      if (partName !== null && partName !== conv.convalidable) throw new Error('Solo puede haber una parte convalidable.');
+      partName = conv.convalidable;
+    }
     if (q.tipo === 'abierta') {
       if (Array.isArray(q.options) && q.options.length) {
         throw new Error('Pregunta ' + n + ': una pregunta abierta no lleva opciones.');
@@ -1200,7 +1327,7 @@ function validateQuestions_(qs) {
         if (!t || t.length > MAX_SHORT_CHARS) throw new Error('Pregunta ' + n + ': respuestas aceptadas no válidas.');
         return t;
       });
-      return { id: q.id, title: title, text: text, options: [], correct: null, respuestas: respuestas, tipo: 'corta', valor: valor };
+      return withPart_({ id: q.id, title: title, text: text, options: [], correct: null, respuestas: respuestas, tipo: 'corta', valor: valor }, conv);
     }
     if (q.tipo !== undefined && q.tipo !== 'test') throw new Error('Pregunta ' + n + ': tipo de pregunta no válido.');
     if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > MAX_OPTIONS) {
@@ -1216,7 +1343,7 @@ function validateQuestions_(qs) {
       return { id: o.id, text: o.text.trim() };
     });
     if (!ids[q.correct]) throw new Error('Pregunta ' + n + ': la respuesta correcta no es una de las opciones.');
-    return {
+    return withPart_({
       id: q.id,
       title: title,
       text: text,
@@ -1224,8 +1351,15 @@ function validateQuestions_(qs) {
       correct: q.correct,
       tipo: 'test',
       valor: valor
-    };
+    }, conv);
   });
+  if (partName !== null && out.every(isConvalidable_)) throw new Error('Todas las preguntas son convalidables: al menos una tiene que ser para todos.');
+  return out;
+}
+
+function withPart_(q, conv) {
+  if (conv.convalidable !== undefined) q.convalidable = conv.convalidable;
+  return q;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1288,6 +1422,7 @@ function newResultLayout_(questions) {
   var open = (questions || []).filter(isOpen_);
   var visible = ['apellidos', 'nombre', 'grupo', 'nota'];
   if (open.length) visible.push('pendientes');
+  if ((questions || []).some(isConvalidable_)) visible.push('convalidada');
   visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'desconexiones', 'segundos_sin_conexion', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
   var hidden = ['puntos_test', 'puntos_total'];
   open.forEach(function (q) {
@@ -1372,6 +1507,7 @@ function formatResultsSheet_(sh, layout) {
     var rules = [
       rule('nota', function (r) { return r.whenNumberLessThan(5).setBackground('#fde2e1').setFontColor('#a4262c'); }),
       rule('nota', function (r) { return r.whenNumberGreaterThanOrEqualTo(5).setBackground('#dff3e4').setFontColor('#176b34'); }),
+      rule('convalidada', function (r) { return r.whenTextEqualTo('sí').setBackground('#e3ecfa').setFontColor('#1f5fbf').setBold(true); }),
       rule('pendientes', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('salidas', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c').setBold(true); }),
       rule('segundos_fuera', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c'); }),
@@ -1407,6 +1543,7 @@ function resultHeaders_(questions) {
   });
   if (open.length) cols.push('pendientes');
   if ((questions || []).some(isShort_)) cols.push('cortas_manual');
+  if ((questions || []).some(isConvalidable_)) cols.push('convalidada');
   return cols;
 }
 

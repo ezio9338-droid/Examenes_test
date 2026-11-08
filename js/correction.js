@@ -17,9 +17,9 @@ export function csvCell(value) {
 }
 
 /** Tabla de notas lista para Excel en español: separador «;», decimales con coma, orden por apellidos. */
-export function buildCsv(rows, hasOpen) {
-  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Desconexiones", "Segundos sin conexión", "Intentos de pegar"];
-  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.desconexiones ?? 0, num(r.segundos_sin_conexion ?? 0), r.pegados])];
+export function buildCsv(rows, hasOpen, hasPart = false) {
+  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), ...(hasPart ? ["Convalidada"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Desconexiones", "Segundos sin conexión", "Intentos de pegar"];
+  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), ...(hasPart ? [r.convalidada ? "sí" : ""] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.desconexiones ?? 0, num(r.segundos_sin_conexion ?? 0), r.pegados])];
   return "﻿" + lines.map((l) => l.map(csvCell).join(";")).join("\r\n") + "\r\n";
 }
 
@@ -46,7 +46,7 @@ export async function exportNotes(token, ex) {
   if (!res.ok) return res.message || "No se han podido leer los resultados.";
   if (!res.rows.length) return "Todavía no hay envíos que exportar.";
   const hasOpen = res.exam.preguntas.some((q) => q.tipo === "abierta");
-  download(`notas_${safeName(ex.titulo)}.csv`, buildCsv(res.rows, hasOpen));
+  download(`notas_${safeName(ex.titulo)}.csv`, buildCsv(res.rows, hasOpen, Boolean(res.exam.convalidable)));
   return null;
 }
 
@@ -87,7 +87,10 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   }
 
   // Primero las abiertas (hay que corregirlas) y después las de respuesta corta (ya corregidas solas; se pueden cambiar).
-  const opens = [...res.exam.preguntas.filter((q) => q.tipo === "abierta"), ...res.exam.preguntas.filter((q) => q.tipo === "corta")];
+  // Con parte convalidable, al final una pestaña para comprobar quién la ha marcado y dársela o quitársela.
+  const part = res.exam.convalidable ?? null;
+  const CONV = { id: "", tipo: "convalidaciones" };
+  const opens = [...res.exam.preguntas.filter((q) => q.tipo === "abierta"), ...res.exam.preguntas.filter((q) => q.tipo === "corta"), ...(part ? [CONV] : [])];
   const rows = res.rows;
   for (const r of rows) r.cortas = r.cortas ?? {};
   let current = opens[0];
@@ -98,6 +101,8 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
 
   const done = (q) => rows.filter((r) => r.abiertas[q.id]?.puntos !== null && r.abiertas[q.id]?.puntos !== undefined).length;
   const isShort = (q) => q.tipo === "corta";
+  const isConv = (q) => q === CONV;
+  const convCount = () => rows.filter((r) => r.convalidada).length;
   // Respuesta corta: la corrección a mano si la hay; si no, la automática.
   const shortOk = (a) => Boolean(a?.texto?.trim()) && (a.manual ?? a.auto);
   const shortRight = (q) => rows.filter((r) => shortOk(r.cortas[q.id])).length;
@@ -105,6 +110,14 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   function renderTabs() {
     tabs.replaceChildren(
       ...opens.map((q) => {
+        if (isConv(q)) {
+          return h(
+            "button",
+            { type: "button", role: "tab", class: `q-tab${q === current ? " active" : ""}`, onclick: () => { current = q; renderAll(); } },
+            h("strong", {}, "Convalidaciones"),
+            h("small", {}, `${convCount()}/${rows.length} · ${fmt(part.puntos)} pt`)
+          );
+        }
         const d = isShort(q) ? rows.length : done(q);
         return h(
           "button",
@@ -117,6 +130,10 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   }
 
   function renderProgress() {
+    if (isConv(current)) {
+      progress.replaceChildren(h("p", { class: "muted small" }, `${convCount()} de ${rows.length} con ${part.nombre ? `la parte de ${part.nombre}` : "la parte convalidable"} convalidada`));
+      return;
+    }
     if (isShort(current)) {
       const manual = rows.filter((r) => r.cortas[current.id]?.manual !== null && r.cortas[current.id]?.manual !== undefined).length;
       progress.replaceChildren(h("p", { class: "muted small" }, `${shortRight(current)} de ${rows.length} correctas${manual ? ` · ${manual} corregida${manual === 1 ? "" : "s"} a mano` : ""}`));
@@ -146,6 +163,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   }
 
   function renderBody() {
+    if (isConv(current)) return renderConvBody();
     if (isShort(current)) return renderShortBody();
     const inputs = [];
     const visible = rows.filter((r) => !onlyPending || r.abiertas[current.id].puntos === null);
@@ -155,6 +173,65 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
       visible.length ? h("span") : h("div", { class: "notice ok" }, h("p", {}, rows.length ? "No queda ninguna sin corregir en esta pregunta. 🎉" : "Todavía no hay envíos.")),
       ...visible.map((r, idx) => answerCard(r, idx, inputs))
     );
+  }
+
+  // Parte convalidable: la marca el alumno al empezar; aquí se comprueba y se da o se quita.
+  function renderConvBody() {
+    const visible = rows.filter((r) => !onlyPending || r.convalidada);
+    const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: onlyPending, onchange: (e) => { onlyPending = e.target.checked; renderBody(); } }), "Mostrar solo los que la tienen convalidada");
+    body.replaceChildren(
+      h(
+        "div",
+        { class: "card q-head" },
+        h("p", {}, h("strong", {}, `Parte convalidable${part.nombre ? `: ${part.nombre}` : ""}`), ` · ${part.n} ${part.n === 1 ? "pregunta" : "preguntas"} · ${fmt(part.puntos)} puntos`),
+        h("p", { class: "muted small" }, "El alumno la marca al empezar: no ve esas preguntas y recibe sus puntos enteros. Comprueba que de verdad la tiene convalidada. Si se la quitas, esas preguntas le cuentan en blanco (no las vio); si se la das, recibe sus puntos y se ignora lo que contestó en ellas. La nota se recalcula al momento."),
+        progress,
+        only
+      ),
+      visible.length ? h("span") : h("div", { class: "notice ok" }, h("p", {}, rows.length ? "Nadie la tiene convalidada." : "Todavía no hay envíos.")),
+      ...visible.map((r) => convCard(r))
+    );
+  }
+
+  function convCard(r) {
+    const card = h("div");
+    const status = h("span", { class: "save-state small" });
+    async function save(value) {
+      status.textContent = "Guardando…";
+      status.className = "save-state small";
+      try {
+        const out = await apiPost({ action: "convalidate", token, examId: ex.id, envioId: r.envio_id, convalidada: value });
+        if (out.error === "unauthorized") return onUnauthorized();
+        if (!out.ok) {
+          status.textContent = out.error === "bad_request" ? "El script de Google no está actualizado: actualiza Code.gs (Nueva versión)." : out.message || "No se ha podido guardar.";
+          status.className = "save-state small bad";
+          return;
+        }
+        r.convalidada = out.convalidada;
+        r.aciertos = out.aciertos;
+        r.errores = out.errores;
+        r.blancos = out.blancos;
+        if (out.nota !== "") r.nota = out.nota;
+        paint(`Guardado ✓ · nota del alumno: ${fmt(r.nota)}`);
+        renderTabs();
+        renderProgress();
+        dropIfHidden(card, () => !r.convalidada);
+      } catch {
+        status.textContent = "Sin conexión: no se ha guardado.";
+        status.className = "save-state small bad";
+      }
+    }
+    function paint(message = "") {
+      card.className = `answer-card${r.convalidada ? " graded" : ""}`;
+      status.textContent = message;
+      status.className = "save-state small ok";
+      card.replaceChildren(
+        h("div", { class: "answer-head" }, h("strong", {}, `${r.apellidos}, ${r.nombre}`), h("span", { class: "badge off-soft" }, r.grupo), h("span", { class: `review-status ${r.convalidada ? "ok" : "blank"}` }, r.convalidada ? "Convalidada" : "No convalidada"), h("span", { class: "muted small" }, `Nota: ${fmt(r.nota)}`)),
+        h("div", { class: "grade-row" }, r.convalidada ? h("button", { type: "button", class: "btn secondary small", onclick: () => save(false) }, "Quitar convalidación") : h("button", { type: "button", class: "btn secondary small", onclick: () => save(true) }, "Dar por convalidada"), status)
+      );
+    }
+    paint();
+    return card;
   }
 
   // Respuesta corta: ya corregida sola; el profesor puede marcarla como correcta o incorrecta.
@@ -210,6 +287,11 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
     }
 
     function paint(message = "") {
+      if (r.convalidada && current.convalidable !== undefined) {
+        card.className = "answer-card graded";
+        card.replaceChildren(h("div", { class: "answer-head" }, h("strong", {}, `${r.apellidos}, ${r.nombre}`), h("span", { class: "badge off-soft" }, r.grupo), h("span", { class: "review-status ok" }, "Convalidada")), h("p", { class: "muted small" }, "No vio esta pregunta: tiene sus puntos por la parte convalidada (puedes quitársela en la pestaña «Convalidaciones»)."));
+        return;
+      }
       const blank = !a.texto.trim();
       const ok = shortOk(a);
       const state = blank ? "blank" : ok ? "ok" : "bad";

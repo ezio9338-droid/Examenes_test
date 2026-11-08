@@ -31,6 +31,7 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
       if (r < 0.2) { q.tipo = "abierta"; q.options = []; q.correct = null; }
       else if (r < 0.35) { q.tipo = "corta"; q.options = []; q.correct = null; q.respuestas = ["NaCl", "cloruro de sodio"]; }
       if (r > 0.4) q.valor = Math.round((0.25 + rnd() * 4) * 4) / 4;
+      if (q.tipo !== "abierta" && rnd() < 0.2) q.convalidable = "formulación";
       return q;
     });
     const ans = {};
@@ -43,9 +44,10 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
     const allowNegative = rnd() < 0.5;
     const shortOverrides = {};
     for (const q of qs) if (q.tipo === "corta" && rnd() < 0.3) shortOverrides[q.id] = rnd() < 0.5;
+    const convalidada = rnd() < 0.5;
     assert.deepEqual(
-      JSON.parse(JSON.stringify(gradeServer(qs, ans, { allowNegative, shortOverrides }))),
-      gradeExam(qs, ans, { allowNegative, shortOverrides })
+      JSON.parse(JSON.stringify(gradeServer(qs, ans, { allowNegative, shortOverrides, convalidada }))),
+      gradeExam(qs, ans, { allowNegative, shortOverrides, convalidada })
     );
     // con penalización propia (fracción a/b)
     const den = 1 + Math.floor(rnd() * 9);
@@ -487,7 +489,7 @@ const publishImg = (env, extra = {}) =>
 
 test("version: el panel puede saber qué funciones tiene el script", () => {
   const env = makeEnv();
-  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar"] });
+  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar", "convalidable", "margen"] });
 });
 
 test("imágenes: se guardan troceadas, se devuelven al alumno y las preguntas no filtran la solución", () => {
