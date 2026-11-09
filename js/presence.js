@@ -20,3 +20,17 @@ export function isReducedWindow({ innerWidth, innerHeight, screenWidth, screenHe
   const ratio = (innerWidth * innerHeight) / (screenWidth * screenHeight);
   return ratio < (wasReduced ? RESTORED_RATIO : REDUCED_RATIO);
 }
+
+/** Distancia (px) al borde de la página por debajo de la cual una salida del ratón se considera por el borde. */
+export const MOUSE_EDGE_PX = 8;
+
+/**
+ * ¿Por dónde ha salido el ratón de la página? "edge" si estaba junto a un borde (movimiento normal del ratón,
+ * o la barra de menús y el Dock en la pantalla completa del Mac); "center" si estaba lejos de todos: el ratón
+ * no se ha movido, es la ventana la que se ha ido de debajo (p. ej. gesto de cambio de escritorio a medias).
+ */
+export function mouseExitZone({ x, y, width, height }) {
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return "edge";
+  const d = Math.min(x, y, width - x, height - y);
+  return d <= MOUSE_EDGE_PX ? "edge" : "center";
+}

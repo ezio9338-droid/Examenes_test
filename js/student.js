@@ -2,7 +2,7 @@
 // textContent: nunca se inserta HTML procedente del servidor.
 import { fetchExam, submitExam, fetchReview, beaconSubmit, NetworkError, ConfigError } from "./api.js";
 import { h } from "./dom.js";
-import { isReducedWindow } from "./presence.js";
+import { isReducedWindow, mouseExitZone } from "./presence.js";
 import { createWatcher } from "./watch.js";
 import { richNodes } from "./rich.js";
 import { normalize, seededShuffle, formatClock, penaltyFraction, formatNumber, newSendId } from "./util.js";
@@ -872,12 +872,32 @@ function renderExam(session) {
     wakeLock = null;
   }
 
+  // Ratón fuera de la página (solo ordenadores): solo se registra, no cuenta como salida. En el Mac, el gesto de
+  // cambio de escritorio hecho a medias deja ver otra pantalla sin que la página pierda el foco ni se oculte; lo
+  // único que avisa es que el ratón deja de estar sobre la página, sin haberse movido hasta un borde.
+  // Si el ratón sigue fuera MOUSE_MS, se apunta en los motivos «mouseOut» (salió lejos de los bordes: sospechoso)
+  // o «mouseEdge» (salió por un borde: barra de menús, Dock o fuera de la ventana). Como mucho MOUSE_MAX, para no
+  // llenar la columna. Si a la vez la ventana pierde el foco o se oculta, no se apunta: eso ya es una salida.
+  const MOUSE_MS = 1500;
+  const MOUSE_MAX = 5;
+  let mouseOut = null; // { since, zone, logged }
+  function checkMouse(now) {
+    if (!mouseOut || mouseOut.logged || now - mouseOut.since < MOUSE_MS) return;
+    if (!watcher.isArmed() || watcher.isAway() || document.hidden || blurred || !document.hasFocus()) return;
+    mouseOut.logged = true;
+    if (progress.motivos.filter((m) => m.startsWith("mouse")).length >= MOUSE_MAX) return;
+    progress.motivos.push(mouseOut.zone === "center" ? "mouseOut" : "mouseEdge");
+    save();
+  }
+
   function evaluateAway() {
     if (!watched || sending || finished) return;
-    const r = watcher.update(collectInputs(), Date.now());
+    const now = Date.now();
+    const r = watcher.update(collectInputs(), now);
     if (r.leave) onLeave(r.leave);
     if (r.back) onReturn(r.back);
     applyCover(r.coverReason);
+    checkMouse(now);
   }
 
   if (watched) {
@@ -895,6 +915,13 @@ function renderExam(session) {
     window.addEventListener("pageshow", () => { pageHidden = false; evaluateAway(); });
     window.addEventListener("resize", evaluateAway);
     window.addEventListener("orientationchange", evaluateAway);
+    if (!tablet) {
+      const root = document.documentElement;
+      root.addEventListener("mouseleave", (e) => {
+        mouseOut = { since: Date.now(), zone: mouseExitZone({ x: e.clientX, y: e.clientY, width: root.clientWidth, height: root.clientHeight }), logged: false };
+      });
+      root.addEventListener("mouseenter", () => { mouseOut = null; });
+    }
     document.addEventListener("fullscreenchange", evaluateAway);
     document.addEventListener("webkitfullscreenchange", evaluateAway);
     // El teclado en pantalla aparece y desaparece al entrar o salir de un cuadro de texto.

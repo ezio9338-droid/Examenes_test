@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isReducedWindow } from "../js/presence.js";
+import { isReducedWindow, mouseExitZone } from "../js/presence.js";
 
 // iPad Air 11" en horizontal: pantalla 1180x820. Safari a pantalla completa deja ~ 1180x700.
 const ipad = { screenWidth: 1180, screenHeight: 820, coarse: true };
@@ -42,4 +42,15 @@ test("el teclado en pantalla al escribir no cuenta como ventana reducida", () =>
   assert.equal(isReducedWindow({ ...keyboard, typing: true }), false);
   assert.equal(isReducedWindow({ ...keyboard, typing: true, wasReduced: true }), false);
   assert.equal(isReducedWindow({ ...ipad, innerWidth: 590, innerHeight: 700, typing: false }), true);
+});
+
+test("salida del ratón: por un borde o por el centro de la página", () => {
+  const page = { width: 1408, height: 881 };
+  assert.equal(mouseExitZone({ ...page, x: 700, y: 400 }), "center");
+  assert.equal(mouseExitZone({ ...page, x: 700, y: 0 }), "edge"); // barra de menús
+  assert.equal(mouseExitZone({ ...page, x: 700, y: 879 }), "edge"); // Dock
+  assert.equal(mouseExitZone({ ...page, x: 1405, y: 400 }), "edge");
+  assert.equal(mouseExitZone({ ...page, x: 3, y: 400 }), "edge");
+  assert.equal(mouseExitZone({ ...page, x: -20, y: 400 }), "edge"); // ya fuera de la página
+  assert.equal(mouseExitZone({ ...page, x: NaN, y: 400 }), "edge"); // sin posición: no se supone nada raro
 });
