@@ -329,6 +329,8 @@ function startExam(exam, who) {
   progress.desconexiones = Number(progress.desconexiones) || 0;
   progress.segundosSinConexion = Number(progress.segundosSinConexion) || 0;
   progress.offlineSince = progress.offlineSince || null;
+  progress.cambiosEscritorio = Number(progress.cambiosEscritorio) || 0;
+  progress.segundosEscritorio = Number(progress.segundosEscritorio) || 0;
   // Lo que marque al empezar (o al continuar) manda: puede corregirlo si se equivocó.
   progress.convalidada = Boolean(who.convalidada) && exam.questions.some(isConvalidable);
   store.set(key, JSON.stringify(progress));
@@ -652,6 +654,8 @@ function renderExam(session) {
       motivos_salida: progress.motivos.join(","),
       desconexiones: progress.desconexiones,
       segundos_sin_conexion: Math.round(offlineSeconds() * 10) / 10,
+      cambios_escritorio: progress.cambiosEscritorio,
+      segundos_escritorio: Math.round(desktopSeconds() * 10) / 10,
     };
   }
 
@@ -872,12 +876,16 @@ function renderExam(session) {
     wakeLock = null;
   }
 
-  // Ratón fuera de la página (solo ordenadores): solo se registra, no cuenta como salida. En el Mac, el gesto de
-  // cambio de escritorio hecho a medias deja ver otra pantalla sin que la página pierda el foco ni se oculte; lo
-  // único que avisa es que el ratón deja de estar sobre la página, sin haberse movido hasta un borde.
-  // Si el ratón sigue fuera MOUSE_MS, se apunta en los motivos «mouseOut» (salió lejos de los bordes: sospechoso)
-  // o «mouseEdge» (salió por un borde: barra de menús, Dock o fuera de la ventana). Como mucho MOUSE_MAX, para no
-  // llenar la columna. Si a la vez la ventana pierde el foco o se oculta, no se apunta: eso ya es una salida.
+  // Ratón fuera de la página (solo ordenadores): solo se registra para el profesor; al alumno no se le avisa ni le
+  // cuenta como salida. En el Mac, el gesto de cambio de escritorio hecho a medias deja ver otra pantalla sin que
+  // la página pierda el foco ni se oculte; lo único que avisa es que el ratón deja de estar sobre la página sin
+  // haberse movido hasta un borde (comprobado en un Mac: sale y vuelve en el mismo punto).
+  // Si el ratón sigue fuera MOUSE_MS:
+  //  - lejos de los bordes: cuenta como cambio de escritorio (columnas cambios_escritorio y segundos_escritorio)
+  //    y se apunta «mouseOut» en los motivos;
+  //  - por un borde (barra de menús, Dock o fuera de la ventana): solo se apunta «mouseEdge» en los motivos.
+  // En los motivos, como mucho MOUSE_MAX, para no llenar la columna. Si a la vez la ventana pierde el foco o se
+  // oculta, no se apunta: eso ya es una salida.
   const MOUSE_MS = 1500;
   const MOUSE_MAX = 5;
   let mouseOut = null; // { since, zone, logged }
@@ -885,10 +893,15 @@ function renderExam(session) {
     if (!mouseOut || mouseOut.logged || now - mouseOut.since < MOUSE_MS) return;
     if (!watcher.isArmed() || watcher.isAway() || document.hidden || blurred || !document.hasFocus()) return;
     mouseOut.logged = true;
-    if (progress.motivos.filter((m) => m.startsWith("mouse")).length >= MOUSE_MAX) return;
-    progress.motivos.push(mouseOut.zone === "center" ? "mouseOut" : "mouseEdge");
+    if (mouseOut.zone === "center") progress.cambiosEscritorio += 1;
+    if (progress.motivos.filter((m) => m.startsWith("mouse")).length < MOUSE_MAX) {
+      progress.motivos.push(mouseOut.zone === "center" ? "mouseOut" : "mouseEdge");
+    }
     save();
   }
+  const desktopOutMs = (now = Date.now()) => (mouseOut?.logged && mouseOut.zone === "center" ? now - mouseOut.since : 0);
+  // Tiempo total con otro escritorio a la vista, incluido el cambio en curso.
+  const desktopSeconds = () => progress.segundosEscritorio + desktopOutMs() / 1000;
 
   function evaluateAway() {
     if (!watched || sending || finished) return;
@@ -920,7 +933,14 @@ function renderExam(session) {
       root.addEventListener("mouseleave", (e) => {
         mouseOut = { since: Date.now(), zone: mouseExitZone({ x: e.clientX, y: e.clientY, width: root.clientWidth, height: root.clientHeight }), logged: false };
       });
-      root.addEventListener("mouseenter", () => { mouseOut = null; });
+      root.addEventListener("mouseenter", () => {
+        const ms = desktopOutMs();
+        mouseOut = null;
+        if (ms) {
+          progress.segundosEscritorio += ms / 1000;
+          save();
+        }
+      });
     }
     document.addEventListener("fullscreenchange", evaluateAway);
     document.addEventListener("webkitfullscreenchange", evaluateAway);

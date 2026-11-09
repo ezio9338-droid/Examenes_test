@@ -27,6 +27,9 @@ const RESULT_EXTRA = ['salidas', 'segundos_fuera', 'tipo_envio', 'envio_id', 'mo
 const RESULT_POINTS = ['puntos_test', 'puntos_total', 'pegados'];
 // Pérdidas de la conexión a internet durante el examen: solo se registran, no son salidas.
 const RESULT_CONNECTION = ['desconexiones', 'segundos_sin_conexion'];
+// Cambio de escritorio a medias (ordenadores): la ventana se aparta de debajo del ratón sin perder el foco, lo que
+// deja ver otra pantalla. Solo se registra para el profesor: al alumno no se le avisa ni le cuenta como salida.
+const RESULT_DESKTOP = ['cambios_escritorio', 'segundos_escritorio'];
 const RESULT_HEADERS = RESULT_BASE.concat(RESULT_EXTRA);
 const RESULT_TEXT_COLUMNS = ['apellidos', 'nombre', 'grupo', 'envio_id', 'motivos_salida']; // nunca números ni fechas
 const ENVIO_TYPES = ['manual', 'tiempo', 'salida'];
@@ -297,6 +300,8 @@ function submit_(p) {
   var motivos = typeof p.motivos_salida === 'string' ? p.motivos_salida.replace(/[^A-Za-z,]/g, '').slice(0, 120) : '';
   var desconexiones = clampNumber_(p.desconexiones, 999, 0);
   var segundosSinConexion = clampNumber_(p.segundos_sin_conexion, 86400, 1);
+  var cambiosEscritorio = clampNumber_(p.cambios_escritorio, 999, 0);
+  var segundosEscritorio = clampNumber_(p.segundos_escritorio, 86400, 1);
 
   var lock = LockService.getScriptLock();
   try {
@@ -324,7 +329,8 @@ function submit_(p) {
       if (motivos.length > String(rows[sameSend][H.motivos_salida] || '').length) {
         sheet.getRange(sameSend + 1, H.motivos_salida + 1).setValue(motivos);
       }
-      [['desconexiones', desconexiones], ['segundos_sin_conexion', segundosSinConexion]].forEach(function (c) {
+      [['desconexiones', desconexiones], ['segundos_sin_conexion', segundosSinConexion],
+        ['cambios_escritorio', cambiosEscritorio], ['segundos_escritorio', segundosEscritorio]].forEach(function (c) {
         if (H[c[0]] === undefined) return;
         sheet.getRange(sameSend + 1, H[c[0]] + 1).setValue(Math.max(Number(rows[sameSend][H[c[0]]]) || 0, c[1]));
       });
@@ -349,6 +355,7 @@ function submit_(p) {
         duracion_min: duracion, posible_duplicado: duplicado, respuestas_json: JSON.stringify(answers),
         salidas: salidas, segundos_fuera: segundosFuera, tipo_envio: tipoEnvio, envio_id: envioId,
         motivos_salida: motivos, desconexiones: desconexiones, segundos_sin_conexion: segundosSinConexion,
+        cambios_escritorio: cambiosEscritorio, segundos_escritorio: segundosEscritorio,
         puntos_test: result.puntosTest, puntos_total: result.puntosTotal, pegados: pegados,
         convalidada: convalidada ? 'sí' : '',
         pendientes: result.abiertas // preguntas abiertas sin corregir; la nota es la del test hasta que se corrija
@@ -688,6 +695,8 @@ function results_(p) {
       segundos_fuera: Number(get('segundos_fuera')) || 0,
       desconexiones: Number(get('desconexiones')) || 0,
       segundos_sin_conexion: Number(get('segundos_sin_conexion')) || 0,
+      cambios_escritorio: Number(get('cambios_escritorio')) || 0,
+      segundos_escritorio: Number(get('segundos_escritorio')) || 0,
       pegados: Number(get('pegados')) || 0,
       convalidada: isConvalidated_(r, H),
       fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
@@ -1537,7 +1546,7 @@ function newResultLayout_(questions) {
   var visible = ['apellidos', 'nombre', 'grupo', 'nota'];
   if (open.length) visible.push('pendientes');
   if ((questions || []).some(isConvalidable_)) visible.push('convalidada');
-  visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'desconexiones', 'segundos_sin_conexion', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
+  visible = visible.concat(['aciertos', 'errores', 'blancos', 'salidas', 'segundos_fuera', 'cambios_escritorio', 'segundos_escritorio', 'desconexiones', 'segundos_sin_conexion', 'pegados', 'duracion_min', 'fecha', 'posible_duplicado']);
   var hidden = ['puntos_test', 'puntos_total'];
   open.forEach(function (q) {
     var c = openColumns_(q, questions);
@@ -1625,6 +1634,8 @@ function formatResultsSheet_(sh, layout) {
       rule('pendientes', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('salidas', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c').setBold(true); }),
       rule('segundos_fuera', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c'); }),
+      rule('cambios_escritorio', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c').setBold(true); }),
+      rule('segundos_escritorio', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fde2e1').setFontColor('#a4262c'); }),
       rule('desconexiones', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
       rule('segundos_sin_conexion', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00'); }),
       rule('pegados', function (r) { return r.whenNumberGreaterThan(0).setBackground('#fff1c9').setFontColor('#8a5a00').setBold(true); }),
@@ -1649,7 +1660,7 @@ function openColumns_(q, questions) {
 
 // Cabeceras de las columnas añadidas a una hoja de resultados, según las preguntas del examen.
 function resultHeaders_(questions) {
-  var cols = RESULT_POINTS.concat(RESULT_CONNECTION);
+  var cols = RESULT_POINTS.concat(RESULT_CONNECTION, RESULT_DESKTOP);
   var open = (questions || []).filter(isOpen_);
   open.forEach(function (q) {
     var c = openColumns_(q, questions);
