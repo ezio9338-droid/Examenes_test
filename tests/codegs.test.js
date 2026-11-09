@@ -263,7 +263,7 @@ test("hojas de resultados antiguas reciben las columnas nuevas por nombre", () =
   sheet.rows = [["fecha", "nombre", "grupo", "aciertos", "errores", "blancos", "nota", "duracion_min", "posible_duplicado", "respuestas_json"]];
   assert.equal(env.post({ action: "submit", examId: id, nombre: "Ana", apellidos: "López", grupo: "B", respuestas: {}, envioId: "x1" }).ok, true);
   const h = sheet.rows[0];
-  assert.deepEqual(plain(h.slice(10)), ["salidas", "segundos_fuera", "tipo_envio", "envio_id", "motivos_salida", "puntos_test", "puntos_total", "pegados", "desconexiones", "segundos_sin_conexion", "cambios_escritorio", "segundos_escritorio"]);
+  assert.deepEqual(plain(h.slice(10)), ["salidas", "segundos_fuera", "tipo_envio", "envio_id", "motivos_salida", "puntos_test", "puntos_total", "pegados", "desconexiones", "segundos_sin_conexion", "cambios_escritorio", "segundos_escritorio", "ventanas_encima", "segundos_ventana_encima"]);
   assert.ok(!h.includes("apellidos"), "no se inserta una columna en medio de una hoja ya en uso");
   assert.equal(cell(sheet.rows, 1, "nombre"), "López, Ana", "en hojas anteriores el nombre se guarda como Apellidos, Nombre");
 });
@@ -481,7 +481,7 @@ test("las hojas anteriores (sin apellidos) siguen funcionando y no se reordenan"
   submitAs(env, id, "Pedro", "Álvarez");
   const rows = sheet.rows;
   assert.deepEqual([cell(rows, 1, "nombre"), cell(rows, 2, "nombre")], ["Zapata, Marta", "Álvarez, Pedro"], "orden de llegada");
-  assert.equal(rows[0].length, 22, "solo se añaden columnas al final (puntos_test, puntos_total, pegados, desconexiones, segundos_sin_conexion, cambios_escritorio, segundos_escritorio)");
+  assert.equal(rows[0].length, 24, "solo se añaden columnas al final (puntos_test, puntos_total, pegados, desconexiones, segundos_sin_conexion, cambios_escritorio, segundos_escritorio, ventanas_encima, segundos_ventana_encima)");
 });
 
 /* ------------------------- imágenes en los enunciados ------------------------- */
@@ -611,4 +611,18 @@ test("cambios de escritorio: se guardan, no son salidas, y el reenvío del mismo
   assert.deepEqual([cell(r2, 2, "cambios_escritorio"), cell(r2, 2, "segundos_escritorio")], [0, 0]);
   const res = env.post({ action: "results", token: "secreto", examId: id });
   assert.deepEqual(plain(res.rows.map((r) => r.cambios_escritorio).sort()), [0, 3]);
+});
+
+test("ventanas encima: se guardan junto al cambio de escritorio y no son salidas", () => {
+  const env = makeEnv();
+  const id = publish(env, { control_salidas: true });
+  const base = { action: "submit", examId: id, nombre: "Ana", apellidos: "López", grupo: "2A", respuestas: {}, envioId: "v1" };
+  assert.equal(env.post({ ...base, ventanas_encima: 2, segundos_ventana_encima: 6.04, motivos_salida: "overlay,overlay" }).ok, true);
+  env.post({ ...base, ventanas_encima: 1, segundos_ventana_encima: 1 });
+  const rows = env.results(id).rows;
+  assert.deepEqual([cell(rows, 1, "ventanas_encima"), cell(rows, 1, "segundos_ventana_encima"), cell(rows, 1, "salidas")], [2, 6, 0]);
+  const h = rows[0];
+  assert.equal(h.indexOf("ventanas_encima"), h.indexOf("segundos_escritorio") + 1);
+  const res = env.post({ action: "results", token: "secreto", examId: id });
+  assert.deepEqual(plain(res.rows.map((r) => [r.ventanas_encima, r.segundos_ventana_encima])), [[2, 6]]);
 });
