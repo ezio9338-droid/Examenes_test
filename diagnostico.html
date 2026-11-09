@@ -26,7 +26,7 @@
     </div>
   </main>
   <script type="module">
-    import { isReducedWindow, REDUCED_RATIO } from "./js/presence.js";
+    import { isReducedWindow, REDUCED_RATIO, trackLargest } from "./js/presence.js";
     import { createWatcher } from "./js/watch.js";
     const watcher = createWatcher();
     let blurred = false;
@@ -59,13 +59,14 @@
       fsSoportada: Boolean(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
     });
     const typing = () => Boolean(document.activeElement?.matches?.("textarea, input, [contenteditable]"));
-    const reduced = () => isReducedWindow({ innerWidth: vw(), innerHeight: vh(), screenWidth: screen.width, screenHeight: screen.height, coarse: matchMedia("(pointer: coarse)").matches, typing: typing() });
+    let largest = null; // ventana más grande vista: referencia de pantalla completa en iPad que dan como pantalla el tamaño de la ventana
+    const reduced = () => { largest = trackLargest(largest, vw(), vh()); return isReducedWindow({ innerWidth: vw(), innerHeight: vh(), screenWidth: screen.width, screenHeight: screen.height, coarse: matchMedia("(pointer: coarse)").matches, typing: typing(), largest }); };
     function write(kind, extra = "") {
       const s = snap();
       const line = `${((Date.now() - t0) / 1000).toFixed(1).padStart(6)} s  ${kind.padEnd(18)} ${extra ? extra + " " : ""}foco=${s.hasFocus} oculta=${s.hidden} completa=${s.fullscreen} ventana=${s.ventana} prop=${s.proporcion}`;
       log.textContent = line + "\n" + log.textContent;
     }
-    for (const [target, names] of [[window, ["blur", "focus", "pagehide", "pageshow", "resize", "orientationchange"]], [document, ["visibilitychange", "fullscreenchange", "webkitfullscreenchange"]]]) {
+    for (const [target, names] of [[window, ["blur", "focus", "pagehide", "pageshow", "resize", "orientationchange"]], [document, ["visibilitychange", "fullscreenchange", "webkitfullscreenchange", "focusin", "focusout"]]]) {
       for (const n of names) target.addEventListener(n, () => write(n));
     }
     // Posición del ratón al salir de la página y al volver: una salida lejos de los bordes no puede ser un
@@ -98,6 +99,7 @@
         ["La página está oculta", s.hidden],
         ["Tamaño de la ventana", s.ventana],
         ["Tamaño de la pantalla", s.pantalla],
+        ["Ventana más grande vista (referencia de pantalla completa)", largest ? `${largest.width}x${largest.height}` : "—"],
         ["Zoom con los dedos", s.zoom],
         ["Pantalla siempre encendida (evita el bloqueo automático)", wake],
         [`Proporción ventana/pantalla (se considera pantalla dividida por debajo de ${REDUCED_RATIO})`, s.proporcion],

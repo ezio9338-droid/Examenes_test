@@ -2,7 +2,7 @@
 // textContent: nunca se inserta HTML procedente del servidor.
 import { fetchExam, submitExam, fetchReview, beaconSubmit, NetworkError, ConfigError } from "./api.js";
 import { h } from "./dom.js";
-import { isReducedWindow, mouseExitZone } from "./presence.js";
+import { isReducedWindow, mouseExitZone, trackLargest } from "./presence.js";
 import { createWatcher } from "./watch.js";
 import { richNodes } from "./rich.js";
 import { normalize, seededShuffle, formatClock, penaltyFraction, formatNumber, newSendId } from "./util.js";
@@ -331,6 +331,8 @@ function startExam(exam, who) {
   progress.offlineSince = progress.offlineSince || null;
   progress.cambiosEscritorio = Number(progress.cambiosEscritorio) || 0;
   progress.segundosEscritorio = Number(progress.segundosEscritorio) || 0;
+  progress.ventanasEncima = Number(progress.ventanasEncima) || 0;
+  progress.segundosVentanaEncima = Number(progress.segundosVentanaEncima) || 0;
   // Lo que marque al empezar (o al continuar) manda: puede corregirlo si se equivocó.
   progress.convalidada = Boolean(who.convalidada) && exam.questions.some(isConvalidable);
   store.set(key, JSON.stringify(progress));
@@ -656,6 +658,8 @@ function renderExam(session) {
       segundos_sin_conexion: Math.round(offlineSeconds() * 10) / 10,
       cambios_escritorio: progress.cambiosEscritorio,
       segundos_escritorio: Math.round(desktopSeconds() * 10) / 10,
+      ventanas_encima: progress.ventanasEncima,
+      segundos_ventana_encima: Math.round(overlaySeconds() * 10) / 10,
     };
   }
 
@@ -817,6 +821,7 @@ function renderExam(session) {
     tablet ? { grace: { hidden: 2000 } } : window.matchMedia?.("(pointer: fine)").matches ? { grace: { fullscreenLost: 1500 } } : {}
   );
   let wasReduced = false;
+  let largestWindow = null; // ventana más grande vista: referencia de pantalla completa (ver presence.js)
   let blurred = false;
   let pageHidden = false;
   let focusSeen = false; // hasFocus() solo cuenta si alguna vez ha sido true
@@ -835,16 +840,20 @@ function renderExam(session) {
     const keyboardMoving = tablet && now < keyboardUntil;
     if (document.hasFocus()) focusSeen = true;
     if (fsActive && fsElement()) fullscreenSeen = true;
+    // Tamaño de la ventana sin contar el zoom: en el iPad, ampliar con dos dedos encoge innerWidth/innerHeight
+    // y se confundía con la pantalla dividida.
+    const winW = document.documentElement.clientWidth || window.innerWidth;
+    const winH = document.documentElement.clientHeight || window.innerHeight;
+    largestWindow = trackLargest(largestWindow, winW, winH);
     wasReduced = isReducedWindow({
-      // Tamaño de la ventana sin contar el zoom: en el iPad, ampliar con dos dedos encoge innerWidth/innerHeight
-      // y se confundía con la pantalla dividida.
-      innerWidth: document.documentElement.clientWidth || window.innerWidth,
-      innerHeight: document.documentElement.clientHeight || window.innerHeight,
+      innerWidth: winW,
+      innerHeight: winH,
       screenWidth: window.screen?.width,
       screenHeight: window.screen?.height,
       coarse: tablet,
       typing: isEditable(document.activeElement),
       wasReduced,
+      largest: largestWindow,
     });
     return {
       hidden: document.hidden || pageHidden,
@@ -899,6 +908,37 @@ function renderExam(session) {
     }
     save();
   }
+  // Ventana encima del examen (solo tabletas): solo se registra para el profesor, como el cambio de escritorio.
+  // En el iPad, una app en una ventana flotante (Slide Over, Stage Manager) tapa el examen sin ocultarlo ni
+  // cambiar su tamaño; lo único que avisa es que Safari deja de ser la ventana activa («blur»; comprobado en un
+  // iPad: dura lo que la ventana está encima y vuelve el «focus» al quitarla, sin que el teclado lo provoque).
+  // Cuenta si dura OVERLAY_MS sin que el alumno toque el examen. Termina con «focus» o al tocar el examen
+  // (Safari no siempre avisa de «focus» al volver). Si cerca hubo teclado o la página se oculta, no cuenta.
+  const OVERLAY_MS = 2000;
+  let overlay = null; // { since, logged }
+  function checkOverlay(now) {
+    if (!overlay || overlay.logged || now - overlay.since < OVERLAY_MS) return;
+    if (keyboardUntil > overlay.since || document.hidden || document.hasFocus()) {
+      overlay = null;
+      return;
+    }
+    if (!watcher.isArmed() || watcher.isAway()) return;
+    overlay.logged = true;
+    progress.ventanasEncima += 1;
+    if (progress.motivos.filter((m) => m === "overlay").length < MOUSE_MAX) progress.motivos.push("overlay");
+    save();
+  }
+  const overlayMs = (now = Date.now()) => (overlay?.logged ? now - overlay.since : 0);
+  const overlaySeconds = () => progress.segundosVentanaEncima + overlayMs() / 1000;
+  function endOverlay() {
+    const ms = overlayMs();
+    overlay = null;
+    if (ms) {
+      progress.segundosVentanaEncima += ms / 1000;
+      save();
+    }
+  }
+
   const desktopOutMs = (now = Date.now()) => (mouseOut?.logged && mouseOut.zone === "center" ? now - mouseOut.since : 0);
   // Tiempo total con otro escritorio a la vista, incluido el cambio en curso.
   const desktopSeconds = () => progress.segundosEscritorio + desktopOutMs() / 1000;
@@ -911,19 +951,24 @@ function renderExam(session) {
     if (r.back) onReturn(r.back);
     applyCover(r.coverReason);
     checkMouse(now);
+    checkOverlay(now);
   }
 
   if (watched) {
     document.addEventListener("visibilitychange", evaluateAway);
     window.addEventListener("blur", () => {
-      // En tabletas no se usa: Safari en iPad avisa de «blur» al ocultar el teclado y en otros gestos aunque el
-      // alumno siga en el examen, y a veces nunca avisa de «focus» al volver (salidas falsas «blurred»).
+      // En tabletas no cuenta como salida: Safari en iPad avisa de «blur» al ocultar el teclado y en otros gestos
+      // aunque el alumno siga en el examen, y a veces nunca avisa de «focus» al volver (salidas falsas «blurred»).
       // Irse a otra app se detecta por la página oculta; la pantalla dividida, por el tamaño de la ventana.
-      if (tablet) return;
+      // Sí se usa para registrar una ventana encima del examen (ver checkOverlay).
+      if (tablet) {
+        if (!overlay && Date.now() >= keyboardUntil) overlay = { since: Date.now(), logged: false };
+        return;
+      }
       blurred = true;
       evaluateAway();
     });
-    window.addEventListener("focus", () => { blurred = false; evaluateAway(); });
+    window.addEventListener("focus", () => { endOverlay(); blurred = false; evaluateAway(); });
     window.addEventListener("pagehide", () => { pageHidden = true; evaluateAway(); });
     window.addEventListener("pageshow", () => { pageHidden = false; evaluateAway(); });
     window.addEventListener("resize", evaluateAway);
@@ -955,6 +1000,7 @@ function renderExam(session) {
     // avisado con «focus» (Safari no siempre lo hace al ocultar el teclado): se quita la marca de ventana sin foco.
     for (const type of ["pointerdown", "touchstart", "keydown", "input"]) {
       document.addEventListener(type, () => {
+        endOverlay(); // si toca el examen, ya no está usando la ventana de encima
         if (blurred) {
           blurred = false;
           evaluateAway();

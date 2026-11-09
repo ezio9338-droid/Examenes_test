@@ -18,8 +18,8 @@ export function csvCell(value) {
 
 /** Tabla de notas lista para Excel en español: separador «;», decimales con coma, orden por apellidos. */
 export function buildCsv(rows, hasOpen, hasPart = false) {
-  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), ...(hasPart ? ["Convalidada"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Cambios de escritorio", "Segundos en otro escritorio", "Desconexiones", "Segundos sin conexión", "Intentos de pegar"];
-  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), ...(hasPart ? [r.convalidada ? "sí" : ""] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.cambios_escritorio ?? 0, num(r.segundos_escritorio ?? 0), r.desconexiones ?? 0, num(r.segundos_sin_conexion ?? 0), r.pegados])];
+  const head = ["Apellidos", "Nombre", "Grupo", "Nota", ...(hasOpen ? ["Preguntas sin corregir"] : []), ...(hasPart ? ["Convalidada"] : []), "Aciertos", "Errores", "En blanco", "Salidas", "Segundos fuera", "Cambios de escritorio", "Segundos en otro escritorio", "Ventanas encima", "Segundos con ventana encima", "Desconexiones", "Segundos sin conexión", "Intentos de pegar"];
+  const lines = [head, ...rows.map((r) => [r.apellidos, r.nombre, r.grupo, num(r.nota), ...(hasOpen ? [r.pendientes] : []), ...(hasPart ? [r.convalidada ? "sí" : ""] : []), r.aciertos, r.errores, r.blancos, r.salidas, num(r.segundos_fuera), r.cambios_escritorio ?? 0, num(r.segundos_escritorio ?? 0), r.ventanas_encima ?? 0, num(r.segundos_ventana_encima ?? 0), r.desconexiones ?? 0, num(r.segundos_sin_conexion ?? 0), r.pegados])];
   return "﻿" + lines.map((l) => l.map(csvCell).join(";")).join("\r\n") + "\r\n";
 }
 

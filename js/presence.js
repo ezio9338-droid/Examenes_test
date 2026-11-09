@@ -13,8 +13,14 @@ export const RESTORED_RATIO = 0.82;
  * Mientras el alumno escribe (typing), el teclado en pantalla encoge la ventana: no cuenta. Si en ese
  * momento cambia de app o toca otra ventana, lo detectan las señales de foco y de página oculta.
  */
-export function isReducedWindow({ innerWidth, innerHeight, screenWidth, screenHeight, coarse, typing = false, wasReduced = false }) {
+export function isReducedWindow({ innerWidth, innerHeight, screenWidth, screenHeight, coarse, typing = false, wasReduced = false, largest = null }) {
   if (!coarse || typing) return false;
+  // Algunos iPad (iPadOS con ventanas) dan como tamaño de pantalla el de la ventana: en pantalla dividida la
+  // ventana parecería ocupar toda la pantalla. Se compara también con la ventana más grande vista en el examen.
+  if (largest && largest.width * largest.height > screenWidth * screenHeight) {
+    screenWidth = largest.width;
+    screenHeight = largest.height;
+  }
   if (!(Math.min(screenWidth, screenHeight) >= 600)) return false;
   if (!(innerWidth > 0 && innerHeight > 0 && screenWidth > 0 && screenHeight > 0)) return false;
   const ratio = (innerWidth * innerHeight) / (screenWidth * screenHeight);
@@ -33,4 +39,10 @@ export function mouseExitZone({ x, y, width, height }) {
   if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return "edge";
   const d = Math.min(x, y, width - x, height - y);
   return d <= MOUSE_EDGE_PX ? "edge" : "center";
+}
+
+/** Guarda la ventana más grande vista (por área) para usarla como referencia de pantalla completa. */
+export function trackLargest(largest, width, height) {
+  if (!(width > 0 && height > 0)) return largest;
+  return !largest || width * height > largest.width * largest.height ? { width, height } : largest;
 }
