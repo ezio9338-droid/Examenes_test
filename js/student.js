@@ -1021,6 +1021,22 @@ function renderExam(session) {
       },
       true
     );
+    // En ordenadores, lo mismo al pulsar una tecla (salvo Esc, que el navegador no deja usar para esto): en algunos
+    // equipos escribir una tilde saca de la pantalla completa (teclado del sistema, menú de acentos, programas de
+    // teclado...). Así, la siguiente tecla la recupera antes de que cuente como salida y el alumno sigue escribiendo.
+    if (!tablet) {
+      document.addEventListener(
+        "keydown",
+        (e) => {
+          if (e.key === "Escape" || e.isComposing) return;
+          if (fsActive && !fsElement() && !fsState.failed && (fullscreenSeen || !watcher.isArmed())) {
+            quietUntil = Date.now() + QUIET_MS;
+            enterFullscreen({ auto: true });
+          }
+        },
+        true
+      );
+    }
     keepScreenOn();
     document.addEventListener("visibilitychange", keepScreenOn);
     watchTimer = setInterval(evaluateAway, 500);

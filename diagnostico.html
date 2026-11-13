@@ -15,6 +15,8 @@
     <div class="card">
       <h2>Estado ahora</h2>
       <div class="actions" style="margin-bottom:10px"><button class="btn secondary small" id="fs" type="button">Probar pantalla completa</button></div>
+      <p class="muted small">Para comprobar las tildes: pon la pantalla completa, escribe aquí palabras con tilde (camión, árbol, pingüino, España) y mira en el registro si aparece «fullscreenchange» o «blur».</p>
+      <textarea id="tildes" rows="2" style="width:100%;margin-bottom:10px" placeholder="Escribe aquí: camión, árbol, pingüino, España"></textarea>
       <table class="exams" id="state"></table>
     </div>
 
@@ -89,6 +91,12 @@
       outAt = null;
       write("mouseenter", where(e) + fuera);
     });
+
+    // Teclas pulsadas en el cuadro de prueba: muestra si al escribir una tilde llega Esc u otra tecla rara.
+    const tildes = document.getElementById("tildes");
+    for (const n of ["keydown", "compositionstart", "compositionend"]) {
+      tildes.addEventListener(n, (e) => write(n, e.key !== undefined ? `tecla=${JSON.stringify(e.key)} código=${e.code} componiendo=${e.isComposing}` : `texto=${JSON.stringify(e.data ?? "")}`));
+    }
 
     function paint() {
       const s = snap();
