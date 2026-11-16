@@ -5,7 +5,7 @@ import { h } from "./dom.js";
 import { isReducedWindow, mouseExitZone, trackLargest } from "./presence.js";
 import { createWatcher } from "./watch.js";
 import { richNodes } from "./rich.js";
-import { normalize, seededShuffle, formatClock, penaltyFraction, formatNumber, newSendId } from "./util.js";
+import { normalize, seededShuffle, formatClock, penaltyFraction, formatNumber, newSendId, reviewLink } from "./util.js";
 import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./grading.js";
 import { MAX_SHORT_CHARS, BLANK, blankLabels } from "./short.js";
 import { convalidablePart, isConvalidable } from "./gift.js";
@@ -21,6 +21,8 @@ const RETRY_DELAYS = [2000, 4000, 8000];
 
 const app = document.getElementById("app");
 const examId = new URLSearchParams(location.search).get("e");
+// Enlace personal de revisión (?e=…&r=identificador del envío): ver reviewLink en util.js.
+const reviewParam = (new URLSearchParams(location.search).get("r") ?? "").trim().slice(0, 64);
 
 /* ---------------------------- utilidades DOM ---------------------------- */
 
@@ -725,7 +727,7 @@ function renderExam(session) {
     }
     store.remove(lastKey());
     rememberSend({ envioId: progress.envioId, nombre: who.nombre, apellidos: who.apellidos });
-    showDone(res, motivo);
+    showDone(res, motivo, progress.envioId);
   }
 
   /* --- vigilancia: cada salida se cuenta y se mide; al superar el límite se envía solo --- */
@@ -1118,7 +1120,38 @@ function renderExam(session) {
   if (watched && overLimit() && !sending) send("salida");
 }
 
-function showDone(res, motivo = "manual") {
+async function copyText(text, button) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = h("textarea", { style: "position:fixed;opacity:0" });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  const old = button.textContent;
+  button.textContent = "¡Copiado!";
+  setTimeout(() => (button.textContent = old), 1500);
+}
+
+// Enlace personal de revisión al terminar: sirve en cualquier dispositivo, aunque este no guarde nada.
+function reviewLinkBox(envioId) {
+  if (typeof envioId !== "string" || !envioId) return null;
+  const link = reviewLink(location.href, examId, envioId);
+  const copy = h("button", { class: "btn secondary", type: "button" }, "Copiar enlace");
+  copy.addEventListener("click", () => copyText(link, copy));
+  return h(
+    "div",
+    { class: "notice info review-link" },
+    h("p", {}, h("strong", {}, "Tu enlace para ver la revisión")),
+    h("p", { class: "small" }, "Guárdalo o hazle una foto. Cuando tu profesor publique la revisión, con este enlace podrás ver tus fallos desde cualquier dispositivo."),
+    h("div", { class: "link-row" }, h("input", { readonly: true, value: link, "aria-label": "Enlace de revisión", onfocus: (e) => e.target.select() }), copy)
+  );
+}
+
+function showDone(res, motivo = "manual", envioId = null) {
   const hasScore = typeof res.nota === "number";
   render(
     h(
@@ -1143,7 +1176,8 @@ function showDone(res, motivo = "manual") {
             h("p", {}, `Aciertos: ${res.aciertos} · Errores: ${res.errores} · En blanco: ${res.blancos}`),
           ]
         : h("p", { class: "muted" }, "Tu profesor te comunicará la nota."),
-      h("p", { class: "muted small" }, "Cuando tu profesor publique la revisión, podrás ver tus fallos abriendo este mismo enlace en este dispositivo.")
+      h("p", { class: "muted small" }, "Cuando tu profesor publique la revisión, podrás ver tus fallos abriendo este mismo enlace en este dispositivo."),
+      reviewLinkBox(envioId)
     )
   );
 }
@@ -1153,6 +1187,7 @@ function showDone(res, motivo = "manual") {
 // Si este dispositivo envió el examen y el profesor ha publicado la revisión, se muestra en lugar del examen.
 // Devuelve true si la ha mostrado. Ante cualquier error se sigue con la página normal.
 async function tryReview() {
+  if (reviewParam) return showLinkedReview();
   const sent = loadJson(sentKey());
   if (!Array.isArray(sent) || !sent.length) return false;
   const found = [];
@@ -1170,6 +1205,30 @@ async function tryReview() {
   if (!found.length) return false;
   if (found.length === 1) showReview(found[0]);
   else showReviewPicker(found);
+  return true;
+}
+
+// Enlace personal de revisión: se muestra la de ese envío y no se ofrece el examen (ese alumno ya lo envió).
+async function showLinkedReview() {
+  const keep = "Guarda este enlace: con él podrás verla en cuanto se publique.";
+  const again = () => h("div", { class: "actions" }, h("button", { type: "button", class: "btn", onclick: () => location.reload() }, "Volver a intentarlo"));
+  let res;
+  try {
+    res = await fetchReview(examId, reviewParam);
+  } catch (e) {
+    render(h("div", { class: "card" }, h("h1", {}, "Revisión"), h("div", { class: "notice error" }, h("p", {}, errorText(e))), again()));
+    return true;
+  }
+  if (res.ok) {
+    rememberSend({ envioId: reviewParam, nombre: res.review.nombre, apellidos: res.review.apellidos });
+    showReview(res.review);
+  } else if (res.error === "review_closed") {
+    showMessage("Revisión no publicada", `Tu profesor todavía no ha publicado la revisión de este examen. ${keep}`, "info");
+  } else if (res.error === "send_not_found") {
+    showMessage("Enlace no válido", "No se encuentra ningún examen enviado con este enlace. Comprueba que lo has copiado entero o pídeselo a tu profesor.", "warn");
+  } else {
+    showMessage("Revisión no disponible", res.message || "No se ha podido cargar la revisión.", "warn");
+  }
   return true;
 }
 

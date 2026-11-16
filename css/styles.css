@@ -273,3 +273,8 @@ dialog.warning h2 { color: var(--danger); }
 /* Lista de exámenes del panel */
 .exam-item { margin: 0 0 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--primary); border-radius: var(--radius); box-shadow: var(--shadow); }
 .exam-item:last-child { border-bottom: 1px solid var(--border); }
+
+/* Enlaces personales de revisión */
+.review-link { margin-top: 14px; }
+.review-link-item { padding: 10px 0; border-top: 1px solid var(--border); }
+.review-link-item .answer-head { margin-bottom: 6px; }

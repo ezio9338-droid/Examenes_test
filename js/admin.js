@@ -2,7 +2,7 @@
 import { apiGet, apiPost, NetworkError, ConfigError } from "./api.js";
 import { parseGift, GiftError } from "./gift.js";
 import { h } from "./dom.js";
-import { studentLink, randomCode, formatNumber } from "./util.js";
+import { studentLink, reviewLink, randomCode, formatNumber } from "./util.js";
 import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./grading.js";
 import { collectImageRefs, matchImage, MAX_IMAGES, MAX_TOTAL_IMAGE_CHARS } from "./images.js";
 import { prepareImage } from "./image-encode.js";
@@ -55,6 +55,47 @@ function caseNote(answers) {
 
 const MAX_INSTRUCTIONS = 2000;
 const notice = (kind, text) => h("div", { class: `notice ${kind}`, role: kind === "error" ? "alert" : null }, h("p", {}, text));
+
+// Enlace personal de revisión de cada alumno: para quien no la ve al abrir el enlace del examen (su navegador no
+// guardó el envío: modo incógnito, datos borrados, otro dispositivo...).
+async function showReviewLinks({ token, ex, onBack, onUnauthorized }) {
+  const app = document.getElementById("app");
+  const back = () => h("button", { class: "btn secondary small", type: "button", onclick: onBack }, "← Volver al panel");
+  const fail = (text) => app.replaceChildren(h("div", { class: "card" }, notice("error", text), back()));
+  app.replaceChildren(h("div", { class: "card" }, h("p", { class: "muted" }, "Cargando envíos…")));
+  let res;
+  try {
+    res = await apiPost({ action: "results", token, examId: ex.id });
+  } catch (e) {
+    return fail(errorText(e));
+  }
+  if (res.error === "unauthorized") return onUnauthorized();
+  if (!res.ok) return fail(res.error === "bad_request" ? "El script de Google no está actualizado: actualiza Code.gs (Nueva versión)." : res.message);
+  const rows = res.rows
+    .filter((r) => r.envio_id)
+    .sort((a, b) => `${a.apellidos} ${a.nombre}`.localeCompare(`${b.apellidos} ${b.nombre}`, "es"));
+  const items = rows.map((r) => {
+    const link = reviewLink(location.href, ex.id, r.envio_id);
+    const copy = h("button", { class: "btn secondary small", type: "button" }, "Copiar enlace");
+    copy.addEventListener("click", () => copyText(link, copy));
+    return h(
+      "div",
+      { class: "review-link-item" },
+      h("div", { class: "answer-head" }, h("strong", {}, `${r.apellidos}, ${r.nombre}`), h("span", { class: "badge off-soft" }, r.grupo)),
+      h("div", { class: "link-row" }, h("input", { readonly: true, value: link, "aria-label": `Enlace de revisión de ${r.nombre} ${r.apellidos}`, onfocus: (e) => e.target.select() }), copy)
+    );
+  });
+  app.replaceChildren(
+    h("div", { class: "top-bar" }, h("div", {}, h("p", { class: "muted small", style: "margin:0" }, "Enlaces de revisión"), h("h1", {}, ex.titulo)), h("div", { class: "actions" }, back())),
+    h(
+      "div",
+      { class: "card" },
+      h("p", {}, "Cada alumno tiene su propio enlace: con él ve su revisión desde cualquier dispositivo, aunque su navegador no guarde datos. Mándaselo solo a quien no la vea al abrir el enlace del examen."),
+      ex.revision ? null : notice("warn", "La revisión de este examen no está publicada: con estos enlaces verán un aviso hasta que pulses «Publicar revisión»."),
+      rows.length ? items : h("p", { class: "muted" }, "No hay envíos con enlace de revisión (los envíos muy antiguos no lo tienen).")
+    )
+  );
+}
 
 async function copyText(text, button) {
   try {
@@ -287,6 +328,7 @@ function showPanel(initialExams) {
               ? h("button", { class: "btn small", type: "button", onclick: () => showCorrection(app, { token, ex, onBack: main, onUnauthorized }) }, ex.n_abiertas ? "Corregir abiertas" : ex.n_cortas ? "Revisar respuestas cortas" : "Revisar convalidaciones")
               : null,
             exportBtn,
+            ex.envios ? h("button", { class: "btn secondary small", type: "button", onclick: () => showReviewLinks({ token, ex, onBack: main, onUnauthorized }) }, "Enlaces de revisión") : null,
             giftBtn,
             toggle,
             reviewToggle,

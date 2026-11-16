@@ -74,6 +74,17 @@ export function studentLink(pageUrl, examId) {
   return url.toString();
 }
 
+/**
+ * Enlace personal de revisión: el del examen con el identificador del envío (`r`). Con él el alumno ve su revisión
+ * desde cualquier dispositivo, aunque el navegador no haya guardado nada (modo incógnito, datos borrados...).
+ * El identificador es aleatorio: no se puede adivinar el de otro alumno.
+ */
+export function reviewLink(pageUrl, examId, envioId) {
+  const url = new URL(studentLink(pageUrl, examId));
+  url.searchParams.set("r", envioId);
+  return url.toString();
+}
+
 const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // sin I, O
 const CODE_ALPHABET = CODE_LETTERS + "23456789"; // sin 0, 1
 
