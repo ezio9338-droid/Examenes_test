@@ -53,3 +53,13 @@ test("studentLink fuerza https salvo en localhost", () => {
   assert.equal(studentLink("http://prof.github.io/examenes/admin.html", "a1"), "https://prof.github.io/examenes/index.html?e=a1");
   assert.equal(studentLink("http://localhost:8000/admin.html", "a1"), "http://localhost:8000/index.html?e=a1");
 });
+
+import { reviewLink } from "../js/util.js";
+
+test("reviewLink añade el identificador del envío al enlace del examen", () => {
+  const url = new URL(reviewLink("https://prof.github.io/examenes/admin.html?x=1#y", "ab12", "ed107493-9d9e"));
+  assert.equal(url.origin + url.pathname, "https://prof.github.io/examenes/index.html");
+  assert.equal(url.searchParams.get("e"), "ab12");
+  assert.equal(url.searchParams.get("r"), "ed107493-9d9e");
+  assert.equal(url.hash, "");
+});
