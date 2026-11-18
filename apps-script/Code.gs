@@ -60,7 +60,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica', 'convertir_practica', 'convalidable', 'margen'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica', 'convertir_practica', 'convalidable', 'margen', 'tiempo'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -89,6 +89,7 @@ function handleGet_(params) {
     case 'exam': return getExam_(params);
     case 'list': return listExams_(params);
     case 'version': return { ok: true, funciones: FEATURES };
+    case 'time': return examTime_(params);
     default: return fail_('bad_request', 'Acción no reconocida.');
   }
 }
@@ -130,6 +131,14 @@ function fail_(code, message) {
 /* ------------------------------------------------------------------ */
 /* Acciones                                                            */
 /* ------------------------------------------------------------------ */
+
+// Tiempo límite actual de un examen (minutos; 0 = sin límite). El examen abierto lo consulta cada minuto: si el
+// profesor cambia la columna tiempo_min mientras lo hacen, el reloj de cada alumno se ajusta sin recargar.
+function examTime_(params) {
+  var exam = findExam_(params.id);
+  if (!exam) return fail_('not_found', 'Este examen no existe.');
+  return { ok: true, tiempo_min: exam.tiempo_min };
+}
 
 function getExam_(params) {
   var exam = findExam_(params.id);

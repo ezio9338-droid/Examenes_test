@@ -61,6 +61,8 @@ export function apiPost(body) {
 }
 
 export const fetchExam = (id, code = "") => apiGet({ action: "exam", id, code });
+/** Tiempo límite actual del examen (minutos; 0 = sin límite): el profesor puede cambiarlo durante el examen. */
+export const fetchTime = (id) => apiGet({ action: "time", id });
 export const submitExam = (payload) => apiPost({ action: "submit", ...payload });
 export const fetchReview = (examId, envioId) => apiPost({ action: "review", examId, envioId });
 
