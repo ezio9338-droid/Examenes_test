@@ -1764,6 +1764,30 @@ function formatExamsSheet_(sh) {
   } catch (err) {
     console.error(err);
   }
+  try {
+    linkExamTitles_(sh);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// El título de cada examen enlaza con su hoja de resultados (un clic en la celda y otro en el enlace).
+// Es un enlace de texto enriquecido: la celda sigue conteniendo solo el título.
+function linkExamTitles_(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return;
+  var col = EXAM_HEADERS.indexOf('titulo') + 1;
+  var sheets = {};
+  SpreadsheetApp.getActiveSpreadsheet().getSheets().forEach(function (s) { sheets[String(s.getSheetId())] = s; });
+  var rows = sh.getRange(2, 1, last - 1, EXAM_HEADERS.length).getValues();
+  var links = rows.map(function (r) {
+    var titulo = String(r[col - 1]);
+    var hoja = sheets[String(r[EXAM_HEADERS.indexOf('hoja_id')])] || (r[0] !== '' ? findResultsSheet_({ id: String(r[0]), hoja_id: '' }) : null);
+    var b = SpreadsheetApp.newRichTextValue().setText(titulo);
+    if (hoja && titulo) b = b.setLinkUrl('#gid=' + hoja.getSheetId());
+    return [b.build()];
+  });
+  sh.getRange(2, col, links.length, 1).setRichTextValues(links);
 }
 
 // Nombre de pestaña válido a partir del título: sin caracteres prohibidos, máximo 90 y sin repetir otra pestaña.
@@ -1810,6 +1834,11 @@ function getResultsSheet_(exam, questions) {
     var col = EXAM_HEADERS.indexOf('hoja_id');
     for (var i = 1; i < rows.length; i++) {
       if (String(rows[i][0]) === String(exam.id)) { exams.getRange(i + 1, col + 1).setValue(sh.getSheetId()); break; }
+    }
+    try {
+      linkExamTitles_(exams); // el título apunta ahora a la hoja nueva
+    } catch (err) {
+      console.error(err);
     }
   } else {
     // Hoja de una versión anterior: se añaden al final las columnas que falten (por nombre) y, si la hoja tiene el

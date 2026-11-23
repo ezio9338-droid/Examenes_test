@@ -12,7 +12,7 @@ const coerce = (v) => {
 };
 
 class FakeSheet {
-  constructor(name, id) { this.name = name; this.id = id; this.rows = []; this.textCells = new Set(); }
+  constructor(name, id) { this.name = name; this.id = id; this.rows = []; this.textCells = new Set(); this.links = new Map(); }
   appendRow(r) { this.rows.push(r.map(coerce)); }
   getDataRange() { return { getValues: () => this.rows.map((r) => [...r]) }; }
   getRange(row, col, nRows = 1, nCols = 1) {
@@ -50,6 +50,13 @@ class FakeSheet {
           return 0;
         });
         block.forEach((r, i) => (this.rows[row - 1 + i] = r));
+      },
+      // Texto enriquecido: se guarda el texto en la celda y el enlace aparte (sheet.links), como hace Sheets.
+      setRichTextValues: (vals) => {
+        vals.forEach((r, i) => r.forEach((v, j) => {
+          this.rows[row - 1 + i][col - 1 + j] = v.text;
+          this.links.set(`${row + i},${col + j}`, v.link);
+        }));
       },
       setNumberFormat: (fmt) => {
         for (let i = 0; i < nRows; i++) for (let j = 0; j < nCols; j++) {
@@ -90,7 +97,14 @@ export function makeEnv(token = "secreto", { uuid: uuidFn } = {}) {
   const cache = new Map();
   const ctx = vm.createContext({
     console,
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ss,
+      newRichTextValue: () => {
+        const v = { text: "", link: null };
+        const b = { setText: (t) => ((v.text = t), b), setLinkUrl: (u) => ((v.link = u), b), build: () => ({ ...v }) };
+        return b;
+      },
+    },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null }) },
     CacheService: {
       getScriptCache: () => {

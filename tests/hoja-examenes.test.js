@@ -25,3 +25,17 @@ test("los exámenes se ordenan por grupo y, dentro del grupo, por fecha; se sigu
   const close = env.post({ action: "setActive", token: "secreto", id: ids["Física 1"], activo: false });
   if (close.ok) assert.equal(env.get({ action: "exam", id: ids["Física 1"] }).ok, false);
 });
+
+test("el título de cada examen enlaza con su hoja de resultados, también tras ordenar", () => {
+  const env = makeEnv();
+  const preguntas = parseGift("::P::Uno{=a~b}");
+  const a = env.post({ action: "createExam", token: "secreto", titulo: "Química", grupo_destino: "3B", preguntas });
+  const b = env.post({ action: "createExam", token: "secreto", titulo: "Física", grupo_destino: "2A", preguntas });
+  const sh = env.sheets.get("Examenes");
+  for (const id of [a.id, b.id]) {
+    const fila = sh.rows.findIndex((r) => String(r[0]) === String(id)) + 1;
+    assert.equal(sh.links.get(`${fila},2`), `#gid=${env.results(id).getSheetId()}`);
+  }
+  // La celda sigue teniendo solo el título: el examen se lee igual.
+  assert.equal(env.get({ action: "exam", id: b.id }).exam.titulo, "Física");
+});
