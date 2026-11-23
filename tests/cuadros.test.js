@@ -114,3 +114,19 @@ test("validación: forma de la respuesta y de las preguntas", () => {
   assert.equal(env.post({ action: "createExam", token: "secreto", titulo: "X", preguntas: [{ id: "q1", text: `A ${BLANK}`, options: [{ id: "a", text: "x" }, { id: "b", text: "y" }], correct: "a" }] }).error, "invalid_exam");
   assert.equal(create({ text: `A ${BLANK} B ${BLANK}`, huecos: [["a"], ["b"]] }).ok, true);
 });
+
+test("usesMargin detecta el margen numérico también en preguntas de varios cuadros", async () => {
+  const { usesMargin } = await import("../js/short.js");
+  const [uno, varios, sinMargen] = parseGift(`::D01::Concentración{=12,5 ±2%}
+
+::D02::Gráfica
+Punto de fusión {=10 ±1}
+Punto de ebullición {=70 ±1}
+
+::F01::Fe2O3
+Prefijos: {=trióxido de dihierro}
+Stock: {=óxido de hierro(III)}`);
+  assert.equal(usesMargin(uno), true);
+  assert.equal(usesMargin(varios), true);
+  assert.equal(usesMargin(sinMargen), false);
+});

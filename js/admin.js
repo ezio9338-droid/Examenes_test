@@ -7,7 +7,7 @@ import { parsePenalty, questionValue, isOpenQuestion, isShortQuestion } from "./
 import { collectImageRefs, matchImage, MAX_IMAGES, MAX_TOTAL_IMAGE_CHARS } from "./images.js";
 import { prepareImage } from "./image-encode.js";
 import { richNodes } from "./rich.js";
-import { caseMatters, blankLabels, numericMargin } from "./short.js";
+import { caseMatters, blankLabels, numericMargin, usesMargin } from "./short.js";
 import { convalidablePart, isConvalidable } from "./gift.js";
 import { showCorrection, exportNotes, exportGift } from "./correction.js";
 
@@ -646,7 +646,7 @@ function renderCreate(box, { onPublished, onUnauthorized }) {
       if (practica.input.checked) needs.push(["practica", "publicar exámenes de práctica"]);
       if (instrucciones.value.trim()) needs.push(["instrucciones", "mostrar instrucciones al alumno"]);
       if (questions.some(isConvalidable)) needs.push(["convalidable", "usar una parte convalidable"]);
-      if (questions.some((q) => isShortQuestion(q) && q.respuestas.some(numericMargin))) needs.push(["margen", "corregir respuestas numéricas con margen"]);
+      if (questions.some((q) => isShortQuestion(q) && usesMargin(q))) needs.push(["margen", "corregir respuestas numéricas con margen"]);
       if (needs.length) {
         const v = await apiGet({ action: "version" });
         const missing = needs.find(([f]) => !v.ok || !Array.isArray(v.funciones) || !v.funciones.includes(f));

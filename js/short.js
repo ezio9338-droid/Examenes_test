@@ -96,6 +96,9 @@ export const MAX_BLANKS = 10;
 /** Respuestas aceptadas de cada cuadro: [[…]] si tiene uno solo (`respuestas`), [[…], […]] si tiene varios (`huecos`). */
 export const shortBlanks = (q) => (Array.isArray(q?.huecos) ? q.huecos : [q?.respuestas ?? []]);
 
+/** ¿Alguna respuesta aceptada (en cualquiera de sus cuadros) lleva margen numérico («12,5 ±2%»)? */
+export const usesMargin = (q) => shortBlanks(q).some((accepted) => accepted.some(numericMargin));
+
 /** Lo que escribió el alumno en cada cuadro, como lista de textos ("" = vacío). */
 export function shortGiven(q, given) {
   const n = shortBlanks(q).length;
