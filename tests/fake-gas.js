@@ -34,10 +34,17 @@ class FakeSheet {
       // Como Sheets: ordena las filas del rango por las columnas indicadas (texto sin distinguir mayúsculas ni tildes).
       sort: (specs) => {
         const block = this.rows.slice(row - 1, row - 1 + nRows);
-        const key = (r, c) => String(r[c - 1] ?? "");
+        const key = (r, c) => r[c - 1] ?? "";
+        // Como Sheets: números y fechas por su valor, texto sin distinguir mayúsculas ni tildes; las vacías, al final.
+        const cmp = (x, y) => {
+          if (x === "" || y === "") return (x === "") - (y === "");
+          const nx = x instanceof Date ? x.getTime() : x, ny = y instanceof Date ? y.getTime() : y;
+          if (typeof nx === "number" && typeof ny === "number") return nx - ny;
+          return String(x).localeCompare(String(y), "es", { sensitivity: "base" });
+        };
         block.sort((a, b) => {
           for (const { column, ascending = true } of specs) {
-            const d = key(a, column - col + 1).localeCompare(key(b, column - col + 1), "es", { sensitivity: "base" });
+            const d = cmp(key(a, column - col + 1), key(b, column - col + 1));
             if (d) return ascending ? d : -d;
           }
           return 0;

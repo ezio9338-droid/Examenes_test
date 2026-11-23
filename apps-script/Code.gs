@@ -476,6 +476,7 @@ function createExam_(p) {
       storedGift_(p.gift),
       practica
     ], [1, 3, 5, 15, 19, 20]);
+    sortExamsSheet_(getExamsSheet_()); // los exámenes de cada grupo, juntos
     formatExamsSheet_(getExamsSheet_()); // también embellece la hoja de quien ya la tenía
     storeImages_(id, images);
   } finally {
@@ -1533,6 +1534,16 @@ function ensureHeaders_(sheet, headers) {
   return added;
 }
 
+// Ordena los exámenes por grupo (los de cada curso quedan juntos) y, dentro de cada grupo, por fecha de creación.
+// Las filas se buscan siempre por el id, así que moverlas no afecta a nada. Usar con el lock tomado.
+function sortExamsSheet_(sh) {
+  var last = sh.getLastRow();
+  if (last < 3) return;
+  var col = function (name) { return EXAM_HEADERS.indexOf(name) + 1; };
+  sh.getRange(2, 1, last - 1, Math.max(sh.getLastColumn(), EXAM_HEADERS.length))
+    .sort([{ column: col('grupo_destino'), ascending: true }, { column: col('creado'), ascending: true }]);
+}
+
 function getExamsSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_EXAMS);
@@ -1730,7 +1741,11 @@ function formatExamsSheet_(sh) {
       .setBorder(true, true, true, true, true, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
     sh.getRange(2, col('activo'), rowsMax - 1, n - col('activo') + 1).setHorizontalAlignment('center');
     sh.getRange(2, col('titulo'), rowsMax - 1, 1).setFontWeight('bold');
-    sh.getRange(2, col('instrucciones'), rowsMax - 1, 1).setHorizontalAlignment('left').setWrap(true);
+    sh.getRange(2, col('instrucciones'), rowsMax - 1, 1).setHorizontalAlignment('left');
+    // Todas las filas con la misma altura: el texto largo (instrucciones con saltos de línea) se recorta en vez de
+    // agrandar la fila. El contenido completo se ve al seleccionar la celda.
+    sh.getRange(2, 1, rowsMax - 1, n).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+    sh.setRowHeightsForced(2, rowsMax - 1, 24);
     sh.getRange(2, col('creado'), rowsMax - 1, 1).setNumberFormat('dd/mm/yyyy hh:mm');
     // «activo» y «revision»: VERDADERO en verde y FALSO en rojo.
     var rules = [];
@@ -1870,6 +1885,7 @@ function setup() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    sortExamsSheet_(getExamsSheet_());
     formatExamsSheet_(getExamsSheet_());
     readExams_().forEach(function (exam) {
       if (!findResultsSheet_(exam)) return;
