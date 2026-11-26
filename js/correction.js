@@ -1,5 +1,5 @@
 // Pantalla de corrección de preguntas abiertas y de respuesta corta, y exportación de las notas (panel del profesor).
-import { apiPost, NetworkError } from "./api.js";
+import { apiGet, apiPost, NetworkError } from "./api.js";
 import { h } from "./dom.js";
 import { richNodes } from "./rich.js";
 import { formatNumber } from "./util.js";
@@ -80,6 +80,11 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
     return;
   }
   if (res.error === "unauthorized") return onUnauthorized();
+  // Puntos a medias en las respuestas cortas: solo si el script de Google ya los admite (un Code.gs anterior los
+  // tomaría como «volver a la corrección automática»).
+  const shortPoints = res.ok && res.exam.preguntas.some((q) => q.tipo === "corta")
+    ? await apiGet({ action: "version" }).then((v) => Boolean(v?.ok && v.funciones?.includes("puntos_cortas")), () => false)
+    : false;
   if (!res.ok) {
     const msg = res.error === "bad_request" ? "El script de Google no está actualizado: actualiza Code.gs (Nueva versión) para poder corregir aquí." : res.message;
     app.replaceChildren(h("div", { class: "card" }, h("div", { class: "notice error" }, h("p", {}, msg)), h("button", { class: "btn secondary", type: "button", onclick: onBack }, "Volver")));
@@ -104,8 +109,10 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   const isConv = (q) => q === CONV;
   const convCount = () => rows.filter((r) => r.convalidada).length;
   // Respuesta corta: la corrección a mano si la hay; si no, la automática.
-  const shortOk = (a) => Boolean(a?.texto?.trim()) && (a.manual ?? a.auto);
-  const shortRight = (q) => rows.filter((r) => shortOk(r.cortas[q.id])).length;
+  // Con puntos a medias (número) solo está bien del todo si tiene el valor entero de la pregunta.
+  const shortOk = (a, q = current) => Boolean(a?.texto?.trim()) && (typeof a.manual === "number" ? a.manual >= q.valor : (a.manual ?? a.auto));
+  const isPartial = (a) => Boolean(a?.texto?.trim()) && typeof a.manual === "number";
+  const shortRight = (q) => rows.filter((r) => shortOk(r.cortas[q.id], q)).length;
 
   function renderTabs() {
     tabs.replaceChildren(
@@ -237,7 +244,7 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
   // Respuesta corta: ya corregida sola; el profesor puede marcarla como correcta o incorrecta.
   function renderShortBody() {
     const visible = rows.filter((r) => !onlyPending || (r.cortas[current.id]?.texto?.trim() && !shortOk(r.cortas[current.id])));
-    const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: onlyPending, onchange: (e) => { onlyPending = e.target.checked; renderBody(); } }), "Mostrar solo las incorrectas");
+    const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: onlyPending, onchange: (e) => { onlyPending = e.target.checked; renderBody(); } }), "Mostrar solo las incorrectas o con parte de los puntos");
     const accepted = current.respuestas ?? [];
     body.replaceChildren(
       h(
@@ -248,7 +255,8 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
           ? current.huecos.map((list, k) => h("p", { class: "small" }, `${current.etiquetas?.[k] ?? `Cuadro ${k + 1}`}: `, h("strong", {}, list.join(" · "))))
           : h("p", { class: "small" }, `${accepted.length === 1 ? "Respuesta aceptada" : "Respuestas aceptadas"}: `, h("strong", {}, accepted.join(" · "))),
         Array.isArray(current.huecos) ? h("p", { class: "muted small" }, "Todo o nada: la pregunta está bien solo si todos sus cuadros lo están.") : null,
-        h("p", { class: "muted small" }, `Vale ${fmt(current.valor)} ${current.valor === 1 ? "punto" : "puntos"}. Ya están corregidas solas; si una respuesta está bien (o mal) aunque la corrección automática diga lo contrario, cámbiala con los botones y la nota del alumno se recalcula.`),
+        h("p", { class: "muted small" }, `Vale ${fmt(current.valor)} ${current.valor === 1 ? "punto" : "puntos"}. Ya están corregidas solas; si una respuesta está bien (o mal) aunque la corrección automática diga lo contrario, cámbiala con los botones y la nota del alumno se recalcula.${shortPoints ? " Para dar parte de los puntos, escríbelos en «Puntos» y pulsa Intro." : ""}`),
+        shortPoints ? null : h("p", { class: "muted small" }, "Para dar puntos a medias, actualiza Code.gs (Nueva versión)."),
         progress,
         only
       ),
@@ -262,13 +270,16 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
     const card = h("div");
     const status = h("span", { class: "save-state small" });
 
+    // value: true/false (correcta o incorrecta) o los puntos (número entre 0 y el valor de la pregunta).
     async function save(value) {
+      const max = current.valor;
+      if (typeof value === "number") value = value === 0 ? false : value === max ? true : value;
       // Si coincide con la automática no se guarda corrección a mano: vuelve a la automática.
       const correcta = value === a.auto ? null : value;
       status.textContent = "Guardando…";
       status.className = "save-state small";
       try {
-        const out = await apiPost({ action: "grade", token, examId: ex.id, envioId: r.envio_id, qid: current.id, correcta });
+        const out = await apiPost({ action: "grade", token, examId: ex.id, envioId: r.envio_id, qid: current.id, ...(typeof correcta === "number" ? { puntos: correcta } : { correcta }) });
         if (out.error === "unauthorized") return onUnauthorized();
         if (!out.ok) {
           status.textContent = out.error === "invalid_grade" && /abierta/.test(out.message ?? "") ? "El script de Google no está actualizado: actualiza Code.gs (Nueva versión)." : out.message || "No se ha podido guardar.";
@@ -297,16 +308,47 @@ export async function showCorrection(app, { token, ex, onBack, onUnauthorized })
       }
       const blank = !a.texto.trim();
       const ok = shortOk(a);
-      const state = blank ? "blank" : ok ? "ok" : "bad";
-      const label = blank ? "En blanco" : `${ok ? "Correcta" : "Incorrecta"} · ${a.manual === null || a.manual === undefined ? "automática" : "corregida a mano"}`;
-      card.className = `answer-card${blank ? "" : ok ? " graded" : " wrong"}`;
+      const partial = isPartial(a) && !ok && a.manual > 0;
+      const state = blank ? "blank" : ok ? "ok" : partial ? "pending" : "bad";
+      const how = a.manual === null || a.manual === undefined ? "automática" : "corregida a mano";
+      const label = blank ? "En blanco" : partial ? `${fmt(a.manual)} de ${fmt(current.valor)} puntos · ${how}` : `${ok ? "Correcta" : "Incorrecta"} · ${how}`;
+      card.className = `answer-card${blank ? "" : ok ? " graded" : partial ? " pending" : " wrong"}`;
       status.textContent = message;
       status.className = "save-state small ok";
-      const pick = (value, text) => h("button", { type: "button", class: `btn small${ok === value ? "" : " secondary"}`, "aria-pressed": String(ok === value), onclick: () => (ok === value ? null : save(value)) }, text);
+      const chosen = (value) => !partial && ok === value;
+      const pick = (value, text) => h("button", { type: "button", class: `btn small${chosen(value) ? "" : " secondary"}`, "aria-pressed": String(chosen(value)), onclick: () => (chosen(value) ? null : save(value)) }, text);
+      // Puntos a mano: muestra los que tiene ahora (enteros, 0 o a medias).
+      const now = partial ? a.manual : ok ? current.valor : 0;
+      const points = h("input", { type: "text", inputmode: "decimal", autocomplete: "off", class: "points-input", "aria-label": `Puntos de ${r.nombre} ${r.apellidos}`, value: String(now).replace(".", ",") });
+      const commit = () => {
+        const t = String(points.value).trim().replace(",", ".");
+        const v = Number(t);
+        if (t === "" || !Number.isFinite(v) || v < 0 || v > current.valor) {
+          status.textContent = `Pon un número entre 0 y ${fmt(current.valor)}.`;
+          status.className = "save-state small bad";
+          return;
+        }
+        if (v !== now) save(v);
+      };
+      points.addEventListener("change", commit);
+      points.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        commit();
+      });
       card.replaceChildren(
         h("div", { class: "answer-head" }, h("strong", {}, `${r.apellidos}, ${r.nombre}`), h("span", { class: "badge off-soft" }, r.grupo), h("span", { class: `review-status ${state}` }, label)),
         blank ? h("div", { class: "answer-text empty" }, "(En blanco)") : h("div", { class: "answer-text" }, a.texto),
-        blank ? null : h("div", { class: "grade-row" }, pick(true, "✓ Correcta"), pick(false, "✗ Incorrecta"), status)
+        blank
+          ? null
+          : h(
+              "div",
+              { class: "grade-row" },
+              pick(true, "✓ Correcta"),
+              pick(false, "✗ Incorrecta"),
+              shortPoints ? h("label", { class: "points-label small" }, "Puntos ", points, ` de ${fmt(current.valor)}`) : null,
+              status
+            )
       );
     }
     paint();

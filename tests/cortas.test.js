@@ -236,3 +236,37 @@ test("hojas con columnas añadidas al final: se colocan en su sitio del diseño 
   assert.equal(sheet.rows[1][sheet.rows[0].indexOf("mis notas")], "revisar");
   assert.equal(sheet.rows[1][sheet.rows[0].indexOf("segundos_sin_conexion")], 9);
 });
+
+test("respuesta corta con puntos a medias: suma esos puntos, se guarda y la ve el alumno", () => {
+  const { env, id } = setup();
+  env.post({ action: "submit", examId: id, nombre: "Ana", apellidos: "López", grupo: "B", envioId: "e1", respuestas: { q1: "a", q2: "ClNa", q3: "agua" }, abiertas: { q4: "x" } });
+  const rows = () => env.results(id).rows;
+  const c = (name) => rows()[1][rows()[0].indexOf(name)];
+  const grade = (extra) => plain(env.post({ action: "grade", token: "secreto", examId: id, envioId: "e1", qid: "q2", ...extra }));
+
+  const g = grade({ puntos: 1 });
+  assert.deepEqual([g.ok, g.correcta, g.acertada, g.puntos, g.aciertos, g.errores], [true, 1, false, 1, 3, 0]);
+  assert.deepEqual([c("puntos_test"), c("cortas_manual")], [3, '{"q2":1}']);
+  assert.equal(plain(env.post({ action: "results", token: "secreto", examId: id })).rows[0].cortas.q2.manual, 1);
+  env.post({ action: "setReview", token: "secreto", id, revision: true });
+  const rq = plain(env.post({ action: "review", examId: id, envioId: "e1" })).review.questions[1];
+  assert.deepEqual([rq.acertada, rq.puntos], [false, 1]);
+
+  // el valor entero cuenta como correcta y 0 como incorrecta
+  assert.deepEqual([grade({ puntos: 2 }).correcta, c("puntos_test")], [true, 4]);
+  assert.deepEqual([grade({ puntos: 0 }).correcta, c("puntos_test"), c("errores")], [false, 2, 1]);
+  assert.equal(grade({ puntos: "0.5" }).correcta, 0.5);
+  // fuera de rango: no cambia nada
+  assert.equal(grade({ puntos: 3 }).error, "invalid_grade");
+  assert.equal(grade({ puntos: -1 }).error, "invalid_grade");
+  assert.equal(c("cortas_manual"), '{"q2":0.5}');
+});
+
+test("gradeExam con puntos a medias en una respuesta corta", () => {
+  const qs = parseGift(GIFT);
+  const r = gradeExam(qs, { q1: "a", q2: "ClNa", q3: "agua" }, { shortOverrides: { q2: 1.5 } });
+  assert.deepEqual([r.aciertos, r.errores, r.puntos], [3, 0, 3.5]);
+  assert.equal(gradeExam(qs, { q2: "ClNa" }, { shortOverrides: { q2: 0 } }).errores, 1);
+  assert.equal(gradeExam(qs, { q2: "ClNa" }, { shortOverrides: { q2: 99 } }).puntos, 2, "nunca más que su valor");
+  assert.equal(gradeExam(qs, {}, { shortOverrides: { q2: 1 } }).blancos, 4 - 1, "en blanco no suma");
+});

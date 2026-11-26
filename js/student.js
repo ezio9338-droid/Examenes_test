@@ -1,6 +1,6 @@
 // Página del alumno (index.html?e=ID). Todo el contenido del examen se pinta con
 // textContent: nunca se inserta HTML procedente del servidor.
-import { fetchExam, submitExam, fetchReview, beaconSubmit, NetworkError, ConfigError } from "./api.js";
+import { fetchExam, fetchTime, submitExam, fetchReview, beaconSubmit, NetworkError, ConfigError } from "./api.js";
 import { h } from "./dom.js";
 import { isReducedWindow, mouseExitZone, trackLargest } from "./presence.js";
 import { createWatcher } from "./watch.js";
@@ -361,18 +361,20 @@ function startExam(exam, who) {
 function renderExam(session) {
   const { exam, questions, who, key, progress } = session;
   const total = questions.length;
-  const limitSeconds = (Number(exam.tiempo_min) || 0) * 60;
+  let limitSeconds = (Number(exam.tiempo_min) || 0) * 60; // puede cambiar durante el examen (ver checkTime)
   const watched = Boolean(exam.control_salidas) && !exam.practica; // la práctica nunca se vigila
   const allowed = Number.isFinite(Number(exam.salidas_permitidas)) ? Number(exam.salidas_permitidas) : 3;
   // La pantalla completa solo se exige si el profesor lo ha marcado al publicar el examen, y solo en ordenadores.
   const fsActive = fullscreenRequired(exam.pantalla_completa);
   const overLimit = () => progress.salidas > allowed;
   let timerId = null;
+  let timePollId = null; // consulta periódica del tiempo límite (ver checkTime)
   let sending = false;
   let finished = false;
 
   const counter = h("span");
-  const timer = h("span", { class: "timer", role: "timer" });
+  const timer = h("span", { class: "timer", role: "timer", hidden: !limitSeconds });
+  const timeNotice = h("div", { class: "notice info", hidden: true, role: "status" });
   const status = h("div", { class: "status", hidden: true, role: "status" });
   const fieldset = h("fieldset", { class: "question" });
   // Con varios cuadros, contestada solo si están todos rellenos (si no, sale entre las «en blanco» al enviar).
@@ -670,6 +672,7 @@ function renderExam(session) {
     if (sending) return;
     sending = true;
     clearInterval(timerId);
+    clearInterval(timePollId);
     cover.hidden = true;
     lock();
     const payload = buildPayload(motivo);
@@ -1060,7 +1063,7 @@ function renderExam(session) {
     evaluateAway(); // muestra la cubierta de preparación si todavía no está a pantalla completa
   }
 
-  const bar = h("div", { class: "exam-bar" }, counter, limitSeconds ? timer : null);
+  const bar = h("div", { class: "exam-bar" }, counter, timer);
   const screen = h(
     "div",
     { class: watched ? "exam-screen no-copy" : "exam-screen" },
@@ -1068,6 +1071,7 @@ function renderExam(session) {
     h("p", { class: "muted" }, `${who.nombre} ${who.apellidos} · ${who.grupo}`),
     watched ? h("p", { class: "muted small" }, "Examen vigilado: no salgas de esta pantalla. Las salidas quedan registradas y, si continúas, el examen se envía automáticamente.") : null,
     bar,
+    timeNotice,
     // Instrucciones del profesor, al principio del examen (texto plano, con sus saltos de línea).
     exam.instrucciones ? h("div", { class: "notice info exam-instructions" }, h("p", {}, h("strong", {}, "Instrucciones")), h("p", {}, exam.instrucciones)) : null,
     progress.convalidada
@@ -1093,16 +1097,57 @@ function renderExam(session) {
   updateCounter();
   window.scrollTo(0, 0);
 
-  if (limitSeconds) {
-    const tick = () => {
-      const remaining = limitSeconds - (Date.now() - progress.startedAt) / 1000;
-      timer.textContent = `⏱ ${formatClock(remaining)}`;
-      timer.classList.toggle("low", remaining <= 60);
-      if (remaining <= 0) send("tiempo");
-    };
+  const tick = () => {
+    if (!limitSeconds) return;
+    const remaining = limitSeconds - (Date.now() - progress.startedAt) / 1000;
+    timer.textContent = `⏱ ${formatClock(remaining)}`;
+    timer.classList.toggle("low", remaining <= 60);
+    if (remaining <= 0) send("tiempo");
+  };
+  function startTimer() {
+    clearInterval(timerId);
+    timer.hidden = !limitSeconds;
+    if (!limitSeconds) return;
     tick();
     if (!sending) timerId = setInterval(tick, 1000);
   }
+  startTimer();
+
+  // Si el profesor cambia el tiempo límite (columna tiempo_min de la hoja) durante el examen, se aplica sin recargar:
+  // se consulta cada TIME_POLL_MS y el reloj sigue contando desde que el alumno empezó. Sin conexión no pasa nada:
+  // se vuelve a intentar en la siguiente consulta. Con un Code.gs anterior (no conoce la consulta) se deja de preguntar.
+  const TIME_POLL_MS = 60000;
+  async function checkTime() {
+    if (sending || finished || document.hidden) return;
+    let res;
+    try {
+      res = await fetchTime(examId);
+    } catch {
+      return;
+    }
+    if (!res?.ok) {
+      if (res?.error === "bad_request") clearInterval(timePollId);
+      return;
+    }
+    const next = Math.max(0, Number(res.tiempo_min) || 0) * 60;
+    if (next === limitSeconds || sending || finished) return;
+    const had = limitSeconds;
+    limitSeconds = next;
+    const left = next ? Math.max(0, Math.ceil((next - (Date.now() - progress.startedAt) / 1000) / 60)) : 0;
+    timeNotice.querySelector("p")?.remove();
+    timeNotice.append(
+      h(
+        "p",
+        {},
+        !next
+          ? "Tu profesor ha quitado el límite de tiempo del examen."
+          : `Tu profesor ha ${!had ? "puesto un límite de tiempo al examen" : next > had ? "ampliado el tiempo del examen" : "reducido el tiempo del examen"}: te ${left === 1 ? "queda 1 minuto" : `quedan ${left} minutos`}.`
+      )
+    );
+    timeNotice.hidden = false;
+    startTimer();
+  }
+  timePollId = setInterval(checkTime, TIME_POLL_MS);
 
   // Conexión a internet: solo se registra (cuántas veces se pierde y durante cuánto tiempo, y «offline» entre los
   // motivos). No cuenta como salida ni oculta el examen: el wifi del centro puede caerse sin culpa del alumno.
@@ -1290,14 +1335,17 @@ function showReview(r, onBack = null) {
       );
     }
     const state = q.respuesta === null ? "blank" : (q.tipo === "corta" ? q.acertada : q.respuesta === q.correcta) ? "ok" : "bad";
-    const label = { ok: "Correcta", bad: "Incorrecta", blank: "En blanco" }[state];
+    // Respuesta corta con parte de los puntos (puestos a mano por el profesor).
+    const partial = q.tipo === "corta" && state === "bad" && typeof q.puntos === "number" && q.puntos > 0;
+    const label = partial ? `${formatNumber(q.puntos)} de ${pts(q.valor)}` : { ok: "Correcta", bad: "Incorrecta", blank: "En blanco" }[state];
+    const statusClass = partial ? "pending" : state;
     if (q.tipo === "corta" && Array.isArray(q.cuadros)) {
       // Varios cuadros: lo que escribió en cada uno y, si la pregunta está mal, las respuestas válidas de los fallados.
       return h(
         "div",
         { class: `card review-q ${state}` },
         legend,
-        h("span", { class: `review-status ${state}` }, label),
+        h("span", { class: `review-status ${statusClass}` }, label),
         q.cuadros.map((c) =>
           h(
             "div",
@@ -1315,7 +1363,7 @@ function showReview(r, onBack = null) {
         "div",
         { class: `card review-q ${state}` },
         legend,
-        h("span", { class: `review-status ${state}` }, label),
+        h("span", { class: `review-status ${statusClass}` }, label),
         h("p", { class: "muted small" }, "Tu respuesta:"),
         q.respuesta ? h("p", { class: `review-open${state === "ok" ? "" : " wrong"}` }, q.respuesta) : h("p", { class: "muted" }, "(en blanco)"),
         state === "ok" ? null : h("p", { class: "muted small" }, accepted.length === 1 ? "Respuesta correcta:" : "Respuestas válidas:"),

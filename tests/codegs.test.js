@@ -49,7 +49,7 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
     }
     const allowNegative = rnd() < 0.5;
     const shortOverrides = {};
-    for (const q of qs) if (q.tipo === "corta" && rnd() < 0.3) shortOverrides[q.id] = rnd() < 0.5;
+    for (const q of qs) if (q.tipo === "corta" && rnd() < 0.3) shortOverrides[q.id] = rnd() < 0.3 ? Math.round(rnd() * (q.valor ?? 1) * 4) / 4 : rnd() < 0.5;
     const convalidada = rnd() < 0.5;
     assert.deepEqual(
       JSON.parse(JSON.stringify(gradeServer(qs, ans, { allowNegative, shortOverrides, convalidada }))),
@@ -495,7 +495,7 @@ const publishImg = (env, extra = {}) =>
 
 test("version: el panel puede saber qué funciones tiene el script", () => {
   const env = makeEnv();
-  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar", "cuadros", "practica", "convertir_practica", "convalidable", "margen"] });
+  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar", "cuadros", "practica", "convertir_practica", "convalidable", "margen", "tiempo", "puntos_cortas"] });
 });
 
 test("imágenes: se guardan troceadas, se devuelven al alumno y las preguntas no filtran la solución", () => {
@@ -625,4 +625,17 @@ test("ventanas encima: se guardan junto al cambio de escritorio y no son salidas
   assert.equal(h.indexOf("ventanas_encima"), h.indexOf("segundos_escritorio") + 1);
   const res = env.post({ action: "results", token: "secreto", examId: id });
   assert.deepEqual(plain(res.rows.map((r) => [r.ventanas_encima, r.segundos_ventana_encima])), [[2, 6]]);
+});
+
+test("time devuelve el tiempo límite actual, también si el profesor lo cambia en la hoja", () => {
+  const env = makeEnv();
+  const id = publish(env);
+  assert.deepEqual(plain(env.get({ action: "time", id })), { ok: true, tiempo_min: 20 });
+  const rows = env.sheets.get("Examenes").rows;
+  rows[1][rows[0].indexOf("tiempo_min")] = 35;
+  assert.equal(env.get({ action: "time", id }).tiempo_min, 35);
+  rows[1][rows[0].indexOf("tiempo_min")] = "";
+  assert.equal(env.get({ action: "time", id }).tiempo_min, 0);
+  assert.equal(env.get({ action: "time", id: "no-existe" }).error, "not_found");
+  assert.ok(env.get({ action: "version" }).funciones.includes("tiempo"));
 });
