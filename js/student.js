@@ -894,7 +894,8 @@ function renderExam(session) {
   // cuenta como salida. En el Mac, el gesto de cambio de escritorio hecho a medias deja ver otra pantalla sin que
   // la página pierda el foco ni se oculte; lo único que avisa es que el ratón deja de estar sobre la página sin
   // haberse movido hasta un borde (comprobado en un Mac: sale y vuelve en el mismo punto).
-  // Si el ratón sigue fuera MOUSE_MS:
+  // Solo cuenta el ratón o el trackpad (no el dedo ni el lápiz), y termina al volver el ratón o en cuanto el alumno
+  // toca, escribe o se desplaza en el examen. Si el ratón sigue fuera MOUSE_MS:
   //  - lejos de los bordes: cuenta como cambio de escritorio (columnas cambios_escritorio y segundos_escritorio)
   //    y se apunta «mouseOut» en los motivos;
   //  - por un borde (barra de menús, Dock o fuera de la ventana): solo se apunta «mouseEdge» en los motivos.
@@ -945,6 +946,18 @@ function renderExam(session) {
   }
 
   const desktopOutMs = (now = Date.now()) => (mouseOut?.logged && mouseOut.zone === "center" ? now - mouseOut.since : 0);
+  // Termina el ratón fuera: al volver el ratón o en cuanto el alumno hace algo en el examen (tocar, escribir,
+  // desplazarse). Así los segundos miden el tiempo con otra cosa delante, no lo que tarda en volver a mover el ratón.
+  // Si aún no se había contado (menos de MOUSE_MS), no cuenta.
+  function endDesktop() {
+    if (!mouseOut) return;
+    const ms = desktopOutMs();
+    mouseOut = null;
+    if (ms) {
+      progress.segundosEscritorio += ms / 1000;
+      save();
+    }
+  }
   // Tiempo total con otro escritorio a la vista, incluido el cambio en curso.
   const desktopSeconds = () => progress.segundosEscritorio + desktopOutMs() / 1000;
 
@@ -980,17 +993,18 @@ function renderExam(session) {
     window.addEventListener("orientationchange", evaluateAway);
     if (!tablet) {
       const root = document.documentElement;
-      root.addEventListener("mouseleave", (e) => {
+      // Solo el ratón o el trackpad («mouse»). En portátiles con pantalla táctil o lápiz, tocar la pantalla o alejar
+      // el lápiz hace que el navegador dé el puntero por salido en mitad de la página: no es un cambio de escritorio.
+      root.addEventListener("pointerleave", (e) => {
+        if (e.pointerType !== "mouse") return;
         mouseOut = { since: Date.now(), zone: mouseExitZone({ x: e.clientX, y: e.clientY, width: root.clientWidth, height: root.clientHeight }), logged: false };
       });
-      root.addEventListener("mouseenter", () => {
-        const ms = desktopOutMs();
-        mouseOut = null;
-        if (ms) {
-          progress.segundosEscritorio += ms / 1000;
-          save();
-        }
+      root.addEventListener("pointerenter", (e) => {
+        if (e.pointerType === "mouse") endDesktop();
       });
+      // Desplazarse con la rueda o el trackpad sobre la página también es estar en ella. (No se usa para la marca de
+      // ventana sin foco: en los ordenadores se puede desplazar una ventana de fondo sin activarla.)
+      document.addEventListener("wheel", endDesktop, { capture: true, passive: true });
     }
     document.addEventListener("fullscreenchange", evaluateAway);
     document.addEventListener("webkitfullscreenchange", evaluateAway);
@@ -1006,6 +1020,7 @@ function renderExam(session) {
     for (const type of ["pointerdown", "touchstart", "keydown", "input"]) {
       document.addEventListener(type, () => {
         endOverlay(); // si toca el examen, ya no está usando la ventana de encima
+        endDesktop(); // ni tiene otro escritorio delante
         if (blurred) {
           blurred = false;
           evaluateAway();

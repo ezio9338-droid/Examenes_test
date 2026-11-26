@@ -485,6 +485,7 @@ function createExam_(p) {
       storedGift_(p.gift),
       practica
     ], [1, 3, 5, 15, 19, 20]);
+    sortExamsSheet_(getExamsSheet_()); // los exámenes de cada grupo, juntos
     formatExamsSheet_(getExamsSheet_()); // también embellece la hoja de quien ya la tenía
     storeImages_(id, images);
   } finally {
@@ -1542,6 +1543,16 @@ function ensureHeaders_(sheet, headers) {
   return added;
 }
 
+// Ordena los exámenes por grupo (los de cada curso quedan juntos) y, dentro de cada grupo, por fecha de creación.
+// Las filas se buscan siempre por el id, así que moverlas no afecta a nada. Usar con el lock tomado.
+function sortExamsSheet_(sh) {
+  var last = sh.getLastRow();
+  if (last < 3) return;
+  var col = function (name) { return EXAM_HEADERS.indexOf(name) + 1; };
+  sh.getRange(2, 1, last - 1, Math.max(sh.getLastColumn(), EXAM_HEADERS.length))
+    .sort([{ column: col('grupo_destino'), ascending: true }, { column: col('creado'), ascending: true }]);
+}
+
 function getExamsSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_EXAMS);
@@ -1739,7 +1750,11 @@ function formatExamsSheet_(sh) {
       .setBorder(true, true, true, true, true, true, '#d9dee5', SpreadsheetApp.BorderStyle.SOLID);
     sh.getRange(2, col('activo'), rowsMax - 1, n - col('activo') + 1).setHorizontalAlignment('center');
     sh.getRange(2, col('titulo'), rowsMax - 1, 1).setFontWeight('bold');
-    sh.getRange(2, col('instrucciones'), rowsMax - 1, 1).setHorizontalAlignment('left').setWrap(true);
+    sh.getRange(2, col('instrucciones'), rowsMax - 1, 1).setHorizontalAlignment('left');
+    // Todas las filas con la misma altura: el texto largo (instrucciones con saltos de línea) se recorta en vez de
+    // agrandar la fila. El contenido completo se ve al seleccionar la celda.
+    sh.getRange(2, 1, rowsMax - 1, n).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+    sh.setRowHeightsForced(2, rowsMax - 1, 24);
     sh.getRange(2, col('creado'), rowsMax - 1, 1).setNumberFormat('dd/mm/yyyy hh:mm');
     // «activo» y «revision»: VERDADERO en verde y FALSO en rojo.
     var rules = [];
@@ -1758,6 +1773,30 @@ function formatExamsSheet_(sh) {
   } catch (err) {
     console.error(err);
   }
+  try {
+    linkExamTitles_(sh);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// El título de cada examen enlaza con su hoja de resultados (un clic en la celda y otro en el enlace).
+// Es un enlace de texto enriquecido: la celda sigue conteniendo solo el título.
+function linkExamTitles_(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return;
+  var col = EXAM_HEADERS.indexOf('titulo') + 1;
+  var sheets = {};
+  SpreadsheetApp.getActiveSpreadsheet().getSheets().forEach(function (s) { sheets[String(s.getSheetId())] = s; });
+  var rows = sh.getRange(2, 1, last - 1, EXAM_HEADERS.length).getValues();
+  var links = rows.map(function (r) {
+    var titulo = String(r[col - 1]);
+    var hoja = sheets[String(r[EXAM_HEADERS.indexOf('hoja_id')])] || (r[0] !== '' ? findResultsSheet_({ id: String(r[0]), hoja_id: '' }) : null);
+    var b = SpreadsheetApp.newRichTextValue().setText(titulo);
+    if (hoja && titulo) b = b.setLinkUrl('#gid=' + hoja.getSheetId());
+    return [b.build()];
+  });
+  sh.getRange(2, col, links.length, 1).setRichTextValues(links);
 }
 
 // Nombre de pestaña válido a partir del título: sin caracteres prohibidos, máximo 90 y sin repetir otra pestaña.
@@ -1804,6 +1843,11 @@ function getResultsSheet_(exam, questions) {
     var col = EXAM_HEADERS.indexOf('hoja_id');
     for (var i = 1; i < rows.length; i++) {
       if (String(rows[i][0]) === String(exam.id)) { exams.getRange(i + 1, col + 1).setValue(sh.getSheetId()); break; }
+    }
+    try {
+      linkExamTitles_(exams); // el título apunta ahora a la hoja nueva
+    } catch (err) {
+      console.error(err);
     }
   } else {
     // Hoja de una versión anterior: se añaden al final las columnas que falten (por nombre) y, si la hoja tiene el
@@ -1879,6 +1923,7 @@ function setup() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    sortExamsSheet_(getExamsSheet_());
     formatExamsSheet_(getExamsSheet_());
     readExams_().forEach(function (exam) {
       if (!findResultsSheet_(exam)) return;
