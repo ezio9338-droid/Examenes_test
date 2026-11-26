@@ -60,7 +60,7 @@ const IMAGE_CHUNK = 40000;             // una celda admite 50 000 caracteres
 const CACHE_PART = 90000;              // una entrada de caché admite 100 KB
 const CACHE_SECONDS = 21600;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica', 'convertir_practica', 'convalidable', 'margen', 'tiempo'];         // capacidades de esta versión del script (las lee el panel)
+const FEATURES = ['imagenes', 'abiertas', 'correccion', 'revision', 'cortas', 'instrucciones', 'exportar', 'cuadros', 'practica', 'convertir_practica', 'convalidable', 'margen', 'tiempo', 'puntos_cortas'];         // capacidades de esta versión del script (las lee el panel)
 const DEFAULT_ALLOWED_EXITS = 3;   // salidas permitidas antes del envío automático
 const MAX_ALLOWED_EXITS = 20;
 
@@ -600,6 +600,8 @@ function reviewQuestions_(questions, answers, overrides, convalidated, openOf) {
     if (isShort_(q)) {
       base.tipo = 'corta';
       base.acertada = shortCorrect_(q, given, overrides);
+      var parcial = shortPoints_(q, given, overrides);
+      if (parcial !== null) base.puntos = parcial; // puntos puestos a mano por el profesor
       if (Array.isArray(q.huecos)) {
         // Varios cuadros: lo escrito en cada uno, si coincide y sus respuestas aceptadas.
         var vals = shortGiven_(q, given);
@@ -698,7 +700,7 @@ function results_(p) {
         var labels = Array.isArray(q.huecos) ? blankLabels_(q.text) : null;
         var texto = shortIsBlank_(q, answers[q.id]) ? ''
           : labels ? vals.map(function (t, k) { return labels[k] + ': ' + (t.trim() || '(en blanco)'); }).join('\n') : vals[0];
-        cortas[q.id] = { texto: texto, auto: shortAllCorrect_(q, answers[q.id]), manual: typeof manual[q.id] === 'boolean' ? manual[q.id] : null };
+        cortas[q.id] = { texto: texto, auto: shortAllCorrect_(q, answers[q.id]), manual: typeof manual[q.id] === 'boolean' || typeof manual[q.id] === 'number' ? manual[q.id] : null };
       });
     }
     var fecha = get('fecha');
@@ -809,12 +811,20 @@ function grade_(p) {
   }
 }
 
-// Corrige a mano una respuesta corta: correcta true/false, o null para volver a la corrección automática.
+// Corrige a mano una respuesta corta: correcta true/false, puntos (a medias), o nada para volver a la automática.
 // Recalcula aciertos, errores, puntos del test y nota del envío.
 function gradeShort_(p, exam, questions, q) {
   var correcta = p.correcta === true ? true : p.correcta === false ? false : null;
   if (p.correcta !== undefined && p.correcta !== null && correcta === null) {
     return fail_('invalid_grade', 'La corrección debe ser correcta o incorrecta.');
+  }
+  // Puntos a medias: entre 0 y el valor de la pregunta. 0 se guarda como incorrecta y el valor entero como correcta.
+  if (p.puntos !== undefined && p.puntos !== null && p.puntos !== '') {
+    var pts = Number(p.puntos);
+    var max = questionValue_(q);
+    if (!isFinite(pts) || pts < 0 || pts > max) return fail_('invalid_grade', 'Los puntos deben estar entre 0 y ' + max + '.');
+    pts = Math.round(pts * 10000) / 10000;
+    correcta = pts === 0 ? false : pts === max ? true : pts;
   }
   var lock = LockService.getScriptLock();
   try {
@@ -857,7 +867,7 @@ function gradeShort_(p, exam, questions, q) {
       var nota = finalGrade_(exam, openQs, questions, row, H);
       if (openQs.length && nota !== '') set('nota', nota);
       return {
-        ok: true, correcta: correcta, acertada: shortCorrect_(q, answers[q.id], manual),
+        ok: true, correcta: correcta, acertada: shortCorrect_(q, answers[q.id], manual), puntos: shortPoints_(q, answers[q.id], manual),
         aciertos: result.aciertos, errores: result.errores, nota: nota
       };
     }
@@ -943,7 +953,7 @@ function isShort_(q) {
   return !!q && q.tipo === 'corta';
 }
 
-// Correcciones a mano de las respuestas cortas de una fila: {id de pregunta: true (correcta) | false}.
+// Correcciones a mano de las respuestas cortas de una fila: {id de pregunta: true (correcta) | false | puntos}.
 function shortOverrides_(row, H) {
   if (H.cortas_manual === undefined || row[H.cortas_manual] === '') return {};
   try {
@@ -955,9 +965,12 @@ function shortOverrides_(row, H) {
 }
 
 // ¿Está bien una respuesta corta? La corrección a mano, si la hay; si no, la automática. En blanco nunca.
+// Con puntos a medias no está bien del todo (ver shortPoints_).
 function shortCorrect_(q, given, overrides) {
   if (shortIsBlank_(q, given)) return false;
-  return typeof overrides[q.id] === 'boolean' ? overrides[q.id] : shortAllCorrect_(q, given);
+  var m = overrides[q.id];
+  if (typeof m === 'number') return m >= questionValue_(q);
+  return typeof m === 'boolean' ? m : shortAllCorrect_(q, given);
 }
 
 // De la parte convalidable (quien la tiene convalidada recibe sus puntos sin contestarla).
@@ -973,6 +986,13 @@ function convalidablePart_(questions) {
   return { nombre: qs[0].convalidable, n: qs.length, puntos: Math.round(puntos * 10000) / 10000 };
 }
 
+// Puntos a medias puestos a mano en una respuesta corta, o null si no los tiene (correcta/incorrecta o automática).
+function shortPoints_(q, given, overrides) {
+  var m = overrides[q.id];
+  if (typeof m !== 'number' || !isFinite(m) || shortIsBlank_(q, given)) return null;
+  return Math.min(Math.max(m, 0), questionValue_(q));
+}
+
 function questionType_(q) {
   return isOpen_(q) ? 'abierta' : isShort_(q) ? 'corta' : 'test';
 }
@@ -980,7 +1000,7 @@ function questionType_(q) {
 function gradeExam_(questions, answers, opts) {
   var allowNegative = !!(opts && opts.allowNegative);
   var penalty = (opts && opts.penalty) || null; // {num, den}: fracción de punto por error; null = 1/(opciones-1)
-  var manual = (opts && opts.shortOverrides) || {}; // respuesta corta corregida a mano: id -> true/false
+  var manual = (opts && opts.shortOverrides) || {}; // respuesta corta corregida a mano: id -> true/false o puntos
   var convalidada = !!(opts && opts.convalidada); // parte convalidable: suma sus puntos sin contestarla
   if (!questions.length) throw new Error('El examen no tiene preguntas.');
 
@@ -1008,8 +1028,15 @@ function gradeExam_(questions, answers, opts) {
         throw new Error('Respuesta no válida en ' + q.id);
       }
       // Todo o nada: con varios cuadros solo está bien si lo están todos; en blanco, si no rellenó ninguno.
+      var m = manual[q.id];
       if (shortIsBlank_(q, given)) blancos++;
-      else if (typeof manual[q.id] === 'boolean' ? manual[q.id] : shortAllCorrect_(q, given)) {
+      else if (typeof m === 'number' && isFinite(m)) {
+        var pts = Math.min(Math.max(m, 0), valor); // puntos a medias puestos por el profesor
+        if (pts > 0) {
+          aciertos++;
+          valorAciertos += pts;
+        } else errores++;
+      } else if (typeof m === 'boolean' ? m : shortAllCorrect_(q, given)) {
         aciertos++;
         valorAciertos += valor;
       } else errores++; // sin penalización: es difícil acertar escribiendo al azar

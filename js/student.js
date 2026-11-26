@@ -1335,14 +1335,17 @@ function showReview(r, onBack = null) {
       );
     }
     const state = q.respuesta === null ? "blank" : (q.tipo === "corta" ? q.acertada : q.respuesta === q.correcta) ? "ok" : "bad";
-    const label = { ok: "Correcta", bad: "Incorrecta", blank: "En blanco" }[state];
+    // Respuesta corta con parte de los puntos (puestos a mano por el profesor).
+    const partial = q.tipo === "corta" && state === "bad" && typeof q.puntos === "number" && q.puntos > 0;
+    const label = partial ? `${formatNumber(q.puntos)} de ${pts(q.valor)}` : { ok: "Correcta", bad: "Incorrecta", blank: "En blanco" }[state];
+    const statusClass = partial ? "pending" : state;
     if (q.tipo === "corta" && Array.isArray(q.cuadros)) {
       // Varios cuadros: lo que escribió en cada uno y, si la pregunta está mal, las respuestas válidas de los fallados.
       return h(
         "div",
         { class: `card review-q ${state}` },
         legend,
-        h("span", { class: `review-status ${state}` }, label),
+        h("span", { class: `review-status ${statusClass}` }, label),
         q.cuadros.map((c) =>
           h(
             "div",
@@ -1360,7 +1363,7 @@ function showReview(r, onBack = null) {
         "div",
         { class: `card review-q ${state}` },
         legend,
-        h("span", { class: `review-status ${state}` }, label),
+        h("span", { class: `review-status ${statusClass}` }, label),
         h("p", { class: "muted small" }, "Tu respuesta:"),
         q.respuesta ? h("p", { class: `review-open${state === "ok" ? "" : " wrong"}` }, q.respuesta) : h("p", { class: "muted" }, "(en blanco)"),
         state === "ok" ? null : h("p", { class: "muted small" }, accepted.length === 1 ? "Respuesta correcta:" : "Respuestas válidas:"),

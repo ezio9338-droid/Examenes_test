@@ -53,9 +53,10 @@ export const isConvalidableQuestion = (q) => typeof q?.convalidable === "string"
  * @param {{id:string, valor?:number, tipo?:string, options:{id:string}[], correct:string, respuestas?:string[]}[]} questions
  * @param {Record<string,string|null|undefined>} answers  id de pregunta -> id de opción, o el texto escrito
  *   en las de respuesta corta (null/ausente/vacío = en blanco)
- * @param {{allowNegative?: boolean, penalty?: {num:number, den:number}|null, shortOverrides?: Record<string,boolean>}} [opts]
+ * @param {{allowNegative?: boolean, penalty?: {num:number, den:number}|null, shortOverrides?: Record<string,boolean|number>}} [opts]
  *   penalty: fracción de punto que resta cada error; null/ausente = 1/(opciones-1) en cada pregunta
- *   shortOverrides: respuestas cortas corregidas a mano (id de pregunta -> correcta o no)
+ *   shortOverrides: respuestas cortas corregidas a mano (id de pregunta -> correcta o no, o los puntos que le da el
+ *   profesor, entre 0 y su valor: con puntos cuenta como acierto si tiene alguno y como error si tiene 0)
  *   convalidada: el alumno tiene convalidada la parte convalidable: esas preguntas suman sus puntos enteros
  *   (no cuentan como aciertos, errores ni en blanco, sino en `convalidadas`) y lo que haya contestado en ellas se ignora
  * @returns {{aciertos:number, errores:number, blancos:number, puntos:number, puntosTest:number,
@@ -103,8 +104,15 @@ export function gradeExam(questions, answers, opts = {}) {
         throw new Error(`Respuesta no válida en ${q.id}`);
       }
       // Todo o nada: con varios cuadros solo está bien si lo están todos; en blanco, si no rellenó ninguno.
+      const manual = shortOverrides[q.id];
       if (shortIsBlank(q, given)) blancos++;
-      else if (typeof shortOverrides[q.id] === "boolean" ? shortOverrides[q.id] : shortAllCorrect(q, given)) {
+      else if (typeof manual === "number" && Number.isFinite(manual)) {
+        const pts = Math.min(Math.max(manual, 0), valor); // puntos a medias puestos por el profesor
+        if (pts > 0) {
+          aciertos++;
+          valorAciertos += pts;
+        } else errores++;
+      } else if (typeof manual === "boolean" ? manual : shortAllCorrect(q, given)) {
         aciertos++;
         valorAciertos += valor;
       } else errores++; // sin penalización: es difícil acertar escribiendo al azar

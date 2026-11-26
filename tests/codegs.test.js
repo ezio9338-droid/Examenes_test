@@ -49,7 +49,7 @@ test("gradeExam_ de Code.gs coincide con js/grading.js en 2000 casos aleatorios"
     }
     const allowNegative = rnd() < 0.5;
     const shortOverrides = {};
-    for (const q of qs) if (q.tipo === "corta" && rnd() < 0.3) shortOverrides[q.id] = rnd() < 0.5;
+    for (const q of qs) if (q.tipo === "corta" && rnd() < 0.3) shortOverrides[q.id] = rnd() < 0.3 ? Math.round(rnd() * (q.valor ?? 1) * 4) / 4 : rnd() < 0.5;
     const convalidada = rnd() < 0.5;
     assert.deepEqual(
       JSON.parse(JSON.stringify(gradeServer(qs, ans, { allowNegative, shortOverrides, convalidada }))),
@@ -495,7 +495,7 @@ const publishImg = (env, extra = {}) =>
 
 test("version: el panel puede saber qué funciones tiene el script", () => {
   const env = makeEnv();
-  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar", "cuadros", "practica", "convertir_practica", "convalidable", "margen", "tiempo"] });
+  assert.deepEqual(plain(env.get({ action: "version" })), { ok: true, funciones: ["imagenes", "abiertas", "correccion", "revision", "cortas", "instrucciones", "exportar", "cuadros", "practica", "convertir_practica", "convalidable", "margen", "tiempo", "puntos_cortas"] });
 });
 
 test("imágenes: se guardan troceadas, se devuelven al alumno y las preguntas no filtran la solución", () => {
