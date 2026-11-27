@@ -923,6 +923,9 @@ function renderExam(session) {
   const OVERLAY_MS = 2000;
   let overlay = null; // { since, logged }
   function checkOverlay(now) {
+    // Ya registrada: termina en cuanto la página vuelve a tener el foco, aunque Safari no haya avisado con «focus»
+    // ni el alumno haya tocado aún el examen (si no, seguía sumando segundos mientras leía).
+    if (overlay?.logged && document.hasFocus()) return endOverlay();
     if (!overlay || overlay.logged || now - overlay.since < OVERLAY_MS) return;
     if (keyboardUntil > overlay.since || document.hidden || document.hasFocus()) {
       overlay = null;
@@ -979,8 +982,11 @@ function renderExam(session) {
       // aunque el alumno siga en el examen, y a veces nunca avisa de «focus» al volver (salidas falsas «blurred»).
       // Irse a otra app se detecta por la página oculta; la pantalla dividida, por el tamaño de la ventana.
       // Sí se usa para registrar una ventana encima del examen (ver checkOverlay).
+      // No cuenta si hay un cuadro de texto activo: al ocultar el teclado con su tecla, Safari avisa de «blur» sin
+      // que el cuadro pierda el foco (no hay «focusout») y document.hasFocus() se queda en false hasta el siguiente
+      // toque: el alumno leía el examen y se apuntaban como «ventana encima» todos esos segundos.
       if (tablet) {
-        if (!overlay && Date.now() >= keyboardUntil) overlay = { since: Date.now(), logged: false };
+        if (!overlay && Date.now() >= keyboardUntil && !isEditable(document.activeElement)) overlay = { since: Date.now(), logged: false };
         return;
       }
       blurred = true;
@@ -1015,6 +1021,16 @@ function renderExam(session) {
     };
     document.addEventListener("focusin", keyboardChange);
     document.addEventListener("focusout", keyboardChange);
+    // El teclado también aparece o se oculta sin que cambie el foco (tecla de ocultar teclado del iPad, teclado
+    // flotante...): lo delata el cambio de alto de la zona visible. Cuenta como movimiento de teclado.
+    if (tablet && window.visualViewport) {
+      let vvHeight = window.visualViewport.height;
+      window.visualViewport.addEventListener("resize", () => {
+        const hgt = window.visualViewport.height;
+        if (Math.abs(hgt - vvHeight) >= 120) keyboardUntil = Date.now() + KEYBOARD_MS;
+        vvHeight = hgt;
+      });
+    }
     // Si el alumno está tocando o escribiendo en la página, la ventana es la activa aunque el navegador no haya
     // avisado con «focus» (Safari no siempre lo hace al ocultar el teclado): se quita la marca de ventana sin foco.
     for (const type of ["pointerdown", "touchstart", "keydown", "input"]) {

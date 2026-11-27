@@ -68,6 +68,8 @@
       const line = `${((Date.now() - t0) / 1000).toFixed(1).padStart(6)} s  ${kind.padEnd(18)} ${extra ? extra + " " : ""}foco=${s.hasFocus} oculta=${s.hidden} completa=${s.fullscreen} ventana=${s.ventana} prop=${s.proporcion}`;
       log.textContent = line + "\n" + log.textContent;
     }
+    // Teclado en pantalla: cambia el alto de la zona visible (también al ocultarlo con su tecla, sin «focusout»).
+    if (window.visualViewport) visualViewport.addEventListener("resize", () => write("zona visible", `alto=${Math.round(visualViewport.height)}`));
     for (const [target, names] of [[window, ["blur", "focus", "pagehide", "pageshow", "resize", "orientationchange"]], [document, ["visibilitychange", "fullscreenchange", "webkitfullscreenchange", "focusin", "focusout"]]]) {
       for (const n of names) target.addEventListener(n, () => write(n));
     }
